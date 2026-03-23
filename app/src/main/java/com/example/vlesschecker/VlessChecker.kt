@@ -13,6 +13,9 @@ import java.util.UUID
 import javax.net.ssl.SNIHostName
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocket
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
+import java.security.cert.X509Certificate
 
 private data class ProbeTarget(
     val host: String,
@@ -42,6 +45,25 @@ private val PROBE_TARGETS = listOf(
             ).toByteArray(Charsets.UTF_8)
     )
 )
+
+// Порта, на которых редко работают реальные прокси (чаще веб-серверы, игры, мусор)
+private val SUSPICIOUS_PORTS = setOf(80, 443, 8080, 8888, 8443, 2096, 2095, 2083, 2087, 8880, 2052, 2053, 2082, 2086)
+
+// Ключевые слова в хосте, которые указывают на тестовые/мусорные домены
+private val SUSPICIOUS_HOST_KEYWORDS = setOf(
+    "example", "test", "localhost", "dummy", "fake", "invalid",
+    "domain", "server", "host", "proxy", "vpn", "free", "premium",
+    "top", "best", "trial", "demo", "sample", "myserver", "myhost"
+)
+
+// Проверка, является ли порт "подозрительным" (вероятно, не прокси)
+private fun isSuspiciousPort(port: Int): Boolean = port in SUSPICIOUS_PORTS
+
+// Проверка, содержит ли хост подозрительные ключевые слова
+private fun isSuspiciousHost(host: String): Boolean {
+    val lower = host.lowercase()
+    return SUSPICIOUS_HOST_KEYWORDS.any { lower.contains(it) }
+}
 
 enum class CheckConfidence(val rank: Int) {
     CONFIRMED(0),
@@ -211,15 +233,32 @@ object VlessChecker {
         val reachabilityLatency = testEndpointReachability(parsed)
         if (reachabilityLatency != null) {
             val strictReality = isStrictRealityVisionProfile(parsed)
+            val suspicious = isSuspiciousPort(parsed.port) || isSuspiciousHost(parsed.host)
+            val finalConfidence = when {
+                strictReality && !suspicious -> CheckConfidence.CONFIRMED
+                else -> CheckConfidence.CANDIDATE
+            }
+            val finalStatusText = when {
+                strictReality && suspicious -> "Параметры REALITY/Vision валидны, но порт или хост подозрительный"
+                strictReality -> strictRealityReason(parsed)
+                suspicious -> "Кандидат: endpoint доступен, но порт или хост подозрительный"
+                else -> candidateReason(parsed)
+            }
+            val finalCheckType = when {
+                strictReality && suspicious -> strictRealityCheckType(parsed) + " (подозрительный порт/хост)"
+                strictReality -> strictRealityCheckType(parsed)
+                suspicious -> candidateCheckType(parsed) + " (подозрительный порт/хост)"
+                else -> candidateCheckType(parsed)
+            }
             return LinkCheckResult(
                 link = rawLink,
                 host = parsed.host,
                 port = parsed.port,
-                checkType = if (strictReality) strictRealityCheckType(parsed) else candidateCheckType(parsed),
+                checkType = finalCheckType,
                 latencyMs = reachabilityLatency,
                 isWorking = true,
-                statusText = if (strictReality) strictRealityReason(parsed) else candidateReason(parsed),
-                confidence = if (strictReality) CheckConfidence.CONFIRMED else CheckConfidence.CANDIDATE
+                statusText = finalStatusText,
+                confidence = finalConfidence
             )
         }
 
@@ -304,6 +343,10 @@ object VlessChecker {
         if (!isLikelyHostname(parsed.sni)) return false
         val shortId = parsed.shortId.orEmpty()
         if (shortId.isNotBlank() && !shortId.matches(Regex("^[0-9a-fA-F]{1,16}$"))) return false
+        // Дополнительные эвристики для повышения точности
+        if (isSuspiciousPort(parsed.port)) return false
+        if (isSuspiciousHost(parsed.host)) return false
+        if (parsed.sni != null && isSuspiciousHost(parsed.sni)) return false
         return true
     }
 
@@ -370,6 +413,7 @@ object VlessChecker {
                 scheme == "trojan" && params["security"].isNullOrBlank() -> "tls"
                 else -> params["security"].orEmpty().ifBlank { "none" }
             }
+            val allowInsecure = params["allowInsecure"]?.let { it == "1" || it.equals("true", ignoreCase = true) } ?: false
             ParsedEndpoint(
                 scheme = scheme,
                 host = host,
@@ -389,6 +433,7 @@ object VlessChecker {
                 realityPublicKey = params["pbk"],
                 shortId = params["sid"],
                 fingerprint = params["fp"],
+                allowInsecure = allowInsecure,
                 vmessJson = null
             )
         } catch (_: Exception) {
@@ -410,6 +455,9 @@ object VlessChecker {
                 json.optString("security").equals("reality", ignoreCase = true) -> "reality"
                 else -> "none"
             }
+            val allowInsecure = json.optString("allowInsecure").let { 
+                it == "1" || it.equals("true", ignoreCase = true) 
+            }
             ParsedEndpoint(
                 scheme = "vmess",
                 host = host,
@@ -428,6 +476,7 @@ object VlessChecker {
                 realityPublicKey = json.optString("pbk").ifBlank { null },
                 shortId = json.optString("sid").ifBlank { null },
                 fingerprint = json.optString("fp").ifBlank { null },
+                allowInsecure = allowInsecure,
                 vmessJson = json
             )
         } catch (_: Exception) {
@@ -639,7 +688,18 @@ object VlessChecker {
 
     private fun wrapTls(base: Socket, parsed: ParsedEndpoint, timeoutMs: Int): SSLSocket {
         val sslContext = SSLContext.getInstance("TLS")
-        sslContext.init(null, null, null)
+        if (parsed.allowInsecure) {
+            // Trust all certificates (для allowInsecure=1)
+            val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
+                override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {}
+                override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+            })
+            sslContext.init(null, trustAllCerts, null)
+        } else {
+            // Используем системный TrustManager (требует валидных сертификатов)
+            sslContext.init(null, null, null)
+        }
         val socket = sslContext.socketFactory.createSocket(base, parsed.host, parsed.port, true) as SSLSocket
         socket.soTimeout = timeoutMs
         val params = socket.sslParameters
@@ -682,6 +742,7 @@ object VlessChecker {
         val realityPublicKey: String?,
         val shortId: String?,
         val fingerprint: String?,
+        val allowInsecure: Boolean = false,
         val vmessJson: JSONObject?
     )
 
