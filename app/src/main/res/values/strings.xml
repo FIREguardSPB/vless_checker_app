@@ -73,7 +73,7 @@
     <string name="share_fastest_subject">Самая быстрая VPN-ссылка</string>
     <string name="share_fastest_chooser">Передать ссылку в приложение</string>
     <string name="checked_results_title">Подходящие конфиги</string>
-    <string name="checked_results_hint">Ниже показаны только подходящие конфиги. Зелёная плашка — подтверждённый, жёлтая — кандидат. Нажми на плашку, чтобы скопировать очищенный конфиг для v2RayTun. Долгое нажатие — открыть в VPN-клиенте.</string>
+    <string name="checked_results_hint">Ниже показаны подходящие конфиги. Зелёная плашка — подтверждённый, жёлтая — кандидат. Включи переключатель «Скрывать кандидатов», чтобы оставить только зелёные. Нажми на плашку, чтобы скопировать очищенный конфиг для v2RayTun. Долгое нажатие — открыть в VPN-клиенте.</string>
     <string name="checked_item_title">Конфиг #%1$d</string>
     <string name="checked_item_meta">Endpoint: %1$s · %2$s · %3$s</string>
     <string name="checked_item_copied_to_clipboard">Конфиг #%1$d скопирован в буфер для v2RayTun</string>
@@ -87,7 +87,9 @@
     <string name="share_current_file_missing">Сначала подтяни или импортируй список</string>
     <string name="share_working_file_missing">Сначала запусти полную проверку, чтобы появился файл рабочих конфигов</string>
     <string name="share_current_file_success">Файл текущего списка передан в chooser</string>
-    <string name="share_working_file_success">Файл рабочих конфигов передан в chooser</string>
+    <string name="share_working_file_success">Файл отображаемых конфигов передан в chooser</string>
+    <string name="save_displayed_file_success">Отображаемые конфиги сохранены в txt</string>
+    <string name="save_displayed_file_missing">Сначала запусти полную проверку, чтобы появились отображаемые конфиги</string>
     <string name="saved_file_label">Локальный txt-файл: %1$s</string>
     <string name="confidence_confirmed_short">подтверждён</string>
     <string name="confidence_candidate_short">кандидат</string>

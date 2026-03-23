@@ -210,15 +210,16 @@ object VlessChecker {
 
         val reachabilityLatency = testEndpointReachability(parsed)
         if (reachabilityLatency != null) {
+            val strictReality = isStrictRealityVisionProfile(parsed)
             return LinkCheckResult(
                 link = rawLink,
                 host = parsed.host,
                 port = parsed.port,
-                checkType = candidateCheckType(parsed),
+                checkType = if (strictReality) strictRealityCheckType(parsed) else candidateCheckType(parsed),
                 latencyMs = reachabilityLatency,
                 isWorking = true,
-                statusText = candidateReason(parsed),
-                confidence = CheckConfidence.CANDIDATE
+                statusText = if (strictReality) strictRealityReason(parsed) else candidateReason(parsed),
+                confidence = if (strictReality) CheckConfidence.CONFIRMED else CheckConfidence.CANDIDATE
             )
         }
 
@@ -262,6 +263,10 @@ object VlessChecker {
         }
     }
 
+    private fun strictRealityCheckType(parsed: ParsedEndpoint): String {
+        return "${parsed.scheme.uppercase()} · строгая профильная проверка REALITY/Vision"
+    }
+
     private fun failedCheckType(parsed: ParsedEndpoint): String {
         return when {
             canRunProtocolProbe(parsed) -> protocolCheckType(parsed)
@@ -272,7 +277,7 @@ object VlessChecker {
     private fun candidateReason(parsed: ParsedEndpoint): String {
         return when {
             parsed.security.equals("reality", ignoreCase = true) ->
-                "Кандидат: endpoint доступен, но REALITY полноценно проверяется только Xray-core/VPN-клиентом"
+                "Кандидат: порт открыт, но для REALITY без Xray-core это еще не гарантия рабочего конфига"
             parsed.flow.contains("xtls-rprx-vision", ignoreCase = true) ->
                 "Кандидат: endpoint доступен, но flow=xtls-rprx-vision требует полноценного клиента"
             parsed.scheme == "vmess" ->
@@ -282,6 +287,48 @@ object VlessChecker {
             else ->
                 "Кандидат: endpoint доступен, но строгая протокольная проверка не прошла"
         }
+    }
+
+    private fun strictRealityReason(parsed: ParsedEndpoint): String {
+        return "Подходит под строгий профиль REALITY/TCP/Vision: параметры валидны, endpoint доступен"
+    }
+
+    private fun isStrictRealityVisionProfile(parsed: ParsedEndpoint): Boolean {
+        if (parsed.scheme != "vless") return false
+        if (!parsed.security.equals("reality", ignoreCase = true)) return false
+        if (parsed.transport.lowercase() !in setOf("", "tcp", "raw")) return false
+        if (!parsed.flow.equals("xtls-rprx-vision", ignoreCase = true)) return false
+        if (!isValidUuid(parsed.user)) return false
+        if (!isValidRealityPublicKey(parsed.realityPublicKey)) return false
+        if (!isValidRealityFingerprint(parsed.fingerprint)) return false
+        if (!isLikelyHostname(parsed.sni)) return false
+        val shortId = parsed.shortId.orEmpty()
+        if (shortId.isNotBlank() && !shortId.matches(Regex("^[0-9a-fA-F]{1,16}$"))) return false
+        return true
+    }
+
+    private fun isValidUuid(value: String?): Boolean {
+        if (value.isNullOrBlank()) return false
+        return runCatching { UUID.fromString(value) }.isSuccess
+    }
+
+    private fun isValidRealityPublicKey(value: String?): Boolean {
+        if (value.isNullOrBlank()) return false
+        return value.matches(Regex("^[A-Za-z0-9_-]{20,120}$"))
+    }
+
+    private fun isValidRealityFingerprint(value: String?): Boolean {
+        if (value.isNullOrBlank()) return false
+        return value.lowercase() in setOf(
+            "chrome", "firefox", "safari", "edge", "ios", "android", "qq", "random"
+        )
+    }
+
+    private fun isLikelyHostname(value: String?): Boolean {
+        if (value.isNullOrBlank()) return false
+        if (value.contains(" ")) return false
+        if (!value.contains('.')) return false
+        return true
     }
 
     private fun parse(rawLink: String): ParsedEndpoint? {
@@ -320,6 +367,9 @@ object VlessChecker {
                     ?.filter { it.isNotEmpty() }
                     .orEmpty(),
                 user = uri.userInfo,
+                realityPublicKey = params["pbk"],
+                shortId = params["sid"],
+                fingerprint = params["fp"],
                 vmessJson = null
             )
         } catch (_: Exception) {
@@ -356,6 +406,9 @@ object VlessChecker {
                     .map { it.trim() }
                     .filter { it.isNotEmpty() },
                 user = json.optString("id").ifBlank { null },
+                realityPublicKey = json.optString("pbk").ifBlank { null },
+                shortId = json.optString("sid").ifBlank { null },
+                fingerprint = json.optString("fp").ifBlank { null },
                 vmessJson = json
             )
         } catch (_: Exception) {
@@ -599,6 +652,9 @@ object VlessChecker {
         val hostHeader: String?,
         val alpn: List<String>,
         val user: String?,
+        val realityPublicKey: String?,
+        val shortId: String?,
+        val fingerprint: String?,
         val vmessJson: JSONObject?
     )
 

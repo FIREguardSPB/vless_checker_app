@@ -34,6 +34,11 @@ object ConfigFileStore {
         return File(snapshotDir(context), fileName(source, workingOnly = true))
     }
 
+    fun saveDisplayedSnapshot(context: Context, source: ListSource, links: List<String>): SavedConfigSnapshot? {
+        val lines = links.mapNotNull { VlessChecker.canonicalizeSupportedLink(it) }
+        return saveLines(context, source, lines, workingOnly = true)
+    }
+
     fun shareCurrentSnapshot(context: Context, source: ListSource): Boolean {
         val file = getCurrentSnapshotFile(context, source)
         if (!file.exists() || file.length() == 0L) return false

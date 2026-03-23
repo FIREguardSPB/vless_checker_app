@@ -11,6 +11,7 @@ object AppPrefs {
     private const val KEY_AUTO_CHECK_ENABLED = "auto_check_enabled"
     private const val KEY_AUTO_CHECK_INTERVAL_MIN = "auto_check_interval_min"
     private const val KEY_DELETE_DEAD_ON_FULL_SCAN = "delete_dead_on_full_scan"
+    private const val KEY_HIDE_CANDIDATES = "hide_candidates"
     private const val KEY_LAST_AUTO_NOTIFIED_LINK = "last_auto_notified_link"
     private const val KEY_LAST_FASTEST_LINK = "last_fastest_link"
 
@@ -70,6 +71,14 @@ object AppPrefs {
 
     fun setDeleteDeadOnFullScan(context: Context, value: Boolean) {
         prefs(context).edit().putBoolean(KEY_DELETE_DEAD_ON_FULL_SCAN, value).apply()
+    }
+
+    fun isHideCandidates(context: Context): Boolean {
+        return prefs(context).getBoolean(KEY_HIDE_CANDIDATES, false)
+    }
+
+    fun setHideCandidates(context: Context, value: Boolean) {
+        prefs(context).edit().putBoolean(KEY_HIDE_CANDIDATES, value).apply()
     }
 
     fun getLastAutoNotifiedLink(context: Context): String {

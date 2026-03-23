@@ -25,6 +25,8 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var intervalMinutes: List<Int>
+    private var latestWorkingResults: List<LinkCheckResult> = emptyList()
+    private var visibleWorkingResults: List<LinkCheckResult> = emptyList()
     private val sourceItems = listOf(
         ListSource.MANUAL,
         ListSource.XRAY_AVAILABLE_ST_TOP100,
@@ -123,6 +125,10 @@ class MainActivity : AppCompatActivity() {
             runFullCheck()
         }
 
+        binding.saveDisplayedListFileButton.setOnClickListener {
+            saveDisplayedListFile()
+        }
+
         binding.importFastestVpnButton.setOnClickListener {
             importFastestIntoVpnClient()
         }
@@ -167,6 +173,11 @@ class MainActivity : AppCompatActivity() {
             AppPrefs.setDeleteDeadOnFullScan(this, isChecked)
         }
 
+        binding.hideCandidatesSwitch.setOnCheckedChangeListener { _, isChecked ->
+            AppPrefs.setHideCandidates(this, isChecked)
+            renderCheckedResults(latestWorkingResults)
+        }
+
         binding.intervalSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 val minutes = intervalMinutes[position]
@@ -188,6 +199,7 @@ class MainActivity : AppCompatActivity() {
         ConfigFileStore.saveCurrentSnapshot(this, ListSource.MANUAL, manualText)
 
         binding.deleteDeadSwitch.isChecked = AppPrefs.isDeleteDeadOnFullScan(this)
+        binding.hideCandidatesSwitch.isChecked = AppPrefs.isHideCandidates(this)
         binding.autoCheckSwitch.isChecked = AppPrefs.isAutoCheckEnabled(this)
 
         val savedInterval = AppPrefs.getAutoCheckIntervalMinutes(this)
@@ -449,8 +461,9 @@ class MainActivity : AppCompatActivity() {
                 val workingDetailed = batch.checked.filter { it.isWorking }
                 renderCheckedResults(workingDetailed)
 
+                val confirmedLinks = batch.confirmed.map { it.link }
                 val workingLinks = batch.working.map { it.link }
-                ConfigFileStore.saveWorkingSnapshot(this@MainActivity, currentSelectedSource(), workingLinks)
+                persistVisibleResultsSnapshot()
                 val fastest = batch.working.firstOrNull()
                 if (fastest != null) {
                     onFastestChosen(fastest)
@@ -599,17 +612,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderCheckedResults(items: List<LinkCheckResult>) {
-        val visibleItems = items
-            .filter { it.isWorking }
+        latestWorkingResults = items.filter { it.isWorking }
+        val visibleItems = latestWorkingResults
+            .filter { !shouldHideCandidates() || it.confidence != CheckConfidence.CANDIDATE }
             .sortedWith(
                 compareBy<LinkCheckResult> { confidenceSortRank(it.confidence) }
                     .thenBy { it.latencyMs ?: Long.MAX_VALUE }
             )
+        visibleWorkingResults = visibleItems
+        persistVisibleResultsSnapshot()
         binding.checkedResultsContainer.removeAllViews()
         val visible = visibleItems.isNotEmpty()
         binding.checkedResultsTitle.visibility = if (visible) View.VISIBLE else View.GONE
         binding.checkedResultsHint.visibility = if (visible) View.VISIBLE else View.GONE
         binding.checkedResultsContainer.visibility = if (visible) View.VISIBLE else View.GONE
+        binding.saveDisplayedListFileButton.isEnabled = visible
         if (visible) {
             binding.checkedResultsTitle.text = getString(R.string.checked_results_title)
         }
@@ -755,6 +772,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun shareWorkingListFile() {
+        persistVisibleResultsSnapshot()
         val ok = ConfigFileStore.shareWorkingSnapshot(this, currentSelectedSource())
         val messageRes = if (ok) {
             R.string.share_working_file_success
@@ -762,6 +780,24 @@ class MainActivity : AppCompatActivity() {
             R.string.share_working_file_missing
         }
         Toast.makeText(this, messageRes, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun saveDisplayedListFile() {
+        val snapshot = persistVisibleResultsSnapshot()
+        if (snapshot == null) {
+            Toast.makeText(this, R.string.save_displayed_file_missing, Toast.LENGTH_SHORT).show()
+            return
+        }
+        binding.resultText.text = buildString {
+            appendLine(getString(R.string.save_displayed_file_success))
+            appendLine(getString(R.string.saved_file_label, snapshot.file.absolutePath))
+            val existing = binding.resultText.text?.toString().orEmpty().trim()
+            if (existing.isNotBlank()) {
+                appendLine()
+                append(existing)
+            }
+        }
+        Toast.makeText(this, R.string.save_displayed_file_success, Toast.LENGTH_SHORT).show()
     }
 
     private fun importFastestIntoVpnClient() {
@@ -790,6 +826,18 @@ class MainActivity : AppCompatActivity() {
     private fun updateFastestActionsState(link: String) {
         val hasLink = link.isNotBlank()
         binding.importFastestVpnButton.isEnabled = hasLink
+    }
+
+    private fun persistVisibleResultsSnapshot(): SavedConfigSnapshot? {
+        return ConfigFileStore.saveDisplayedSnapshot(
+            context = this,
+            source = currentSelectedSource(),
+            links = visibleWorkingResults.map { it.link }
+        )
+    }
+
+    private fun shouldHideCandidates(): Boolean {
+        return binding.hideCandidatesSwitch.isChecked
     }
 
     private fun updateAutoCheckState(notify: Boolean) {
@@ -830,6 +878,8 @@ class MainActivity : AppCompatActivity() {
         binding.intervalSpinner.isEnabled = !isBusy
         binding.autoCheckSwitch.isEnabled = !isBusy
         binding.deleteDeadSwitch.isEnabled = !isBusy
+        binding.hideCandidatesSwitch.isEnabled = !isBusy
+        binding.saveDisplayedListFileButton.isEnabled = !isBusy && visibleWorkingResults.isNotEmpty()
         binding.importFastestVpnButton.isEnabled = !isBusy && AppPrefs.getLastFastestLink(this).isNotBlank()
         binding.openVpnSettingsButton.isEnabled = !isBusy
         binding.startVpnButton.isEnabled = !isBusy
