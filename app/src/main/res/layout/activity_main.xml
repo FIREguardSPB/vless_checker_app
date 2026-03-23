@@ -24,7 +24,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Проверка VLESS-ссылок из списка: ручной поиск первого рабочего, полная проверка всех рабочих, импорт файла и фоновая автопроверка."
+            android:text="Проверка VLESS-ссылок из локального списка или удалённых WhitePrime-списков: поиск самой быстрой рабочей ссылки, полная проверка всех ссылок с временем отклика, импорт файла и фоновая автопроверка."
             android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
 
         <com.google.android.material.textview.MaterialTextView
@@ -32,15 +32,43 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Проверка легковесная: tcp/none — TCP connect, tls — TCP + TLS handshake, reality — только TCP connect. Это не полный VLESS/Xray-сеанс."
+            android:text="Проверка легковесная: tcp/none — TCP connect, tls — TCP + TLS handshake, reality — только TCP connect. Время отклика — это время подключения/handshake, а не полноценный тест Xray/VLESS-сеанса. Передача выбранной ссылки в системный VPN не встроена: приложение может передать ссылку в совместимый VPN-клиент и открыть настройки VPN Android."
             android:textAppearance="@style/TextAppearance.Material3.BodySmall" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Источник списка"
+            android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
+
+        <Spinner
+            android:id="@+id/sourceSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/sourceInfoText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:textAppearance="@style/TextAppearance.Material3.BodySmall" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/refreshRemoteButton"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Обновить выбранный удалённый список" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/importButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="Импортировать список из файла" />
+            android:layout_marginTop="12dp"
+            android:text="Импортировать локальный список из файла" />
 
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
@@ -100,7 +128,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Проверить и скопировать первый рабочий" />
+            android:text="Проверить и скопировать самую быструю из выбранного списка" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/checkAllButton"
@@ -108,7 +136,31 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Проверить все рабочие" />
+            android:text="Проверить все и показать отклик" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/handoffButton"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Передать последнюю выбранную ссылку в VPN-клиент" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/vpnSettingsButton"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Открыть настройки VPN Android" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/lastFastestText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+            android:textIsSelectable="true" />
 
         <ProgressBar
             android:id="@+id/progressBar"

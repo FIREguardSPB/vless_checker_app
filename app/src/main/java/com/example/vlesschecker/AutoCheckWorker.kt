@@ -14,32 +14,53 @@ class AutoCheckWorker(
     override suspend fun doWork(): Result {
         NotificationHelper.createChannel(applicationContext)
 
-        val rawText = AppPrefs.getServerList(applicationContext)
-        val links = VlessChecker.normalizeLines(rawText)
-        if (links.isEmpty()) return Result.success()
+        return try {
+            val selectedSource = ListSource.fromPref(AppPrefs.getSelectedSource(applicationContext))
+            val rawText = withContext(Dispatchers.IO) {
+                when (selectedSource) {
+                    ListSource.LOCAL_MANUAL -> AppPrefs.getServerList(applicationContext)
+                    else -> RemoteListRepository.loadForSource(
+                        context = applicationContext,
+                        source = selectedSource,
+                        forceRefresh = true
+                    ).text
+                }
+            }
 
-        val result = withContext(Dispatchers.IO) {
-            VlessChecker.findFirstAvailable(links)
+            val links = VlessChecker.normalizeLines(rawText)
+            if (links.isEmpty()) return Result.success()
+
+            val result = withContext(Dispatchers.IO) {
+                VlessChecker.findFastestAvailable(links)
+            }
+
+            if (result == null) {
+                AppPrefs.setLastAutoNotifiedLink(applicationContext, "")
+                return Result.success()
+            }
+
+            AppPrefs.setLastFoundFastestLink(applicationContext, result.link)
+
+            val lastLink = AppPrefs.getLastAutoNotifiedLink(applicationContext)
+            if (lastLink == result.link) {
+                return Result.success()
+            }
+
+            ClipboardHelper.copyLink(applicationContext, result.link)
+            NotificationHelper.showFoundLinkNotification(
+                context = applicationContext,
+                link = result.link,
+                title = applicationContext.getString(R.string.notification_title_auto),
+                text = applicationContext.getString(
+                    R.string.notification_fastest_text,
+                    result.latencyMs,
+                    NotificationHelper.shorten(result.link, 56)
+                )
+            )
+            AppPrefs.setLastAutoNotifiedLink(applicationContext, result.link)
+            Result.success()
+        } catch (_: Exception) {
+            Result.retry()
         }
-
-        if (result == null) {
-            AppPrefs.setLastAutoNotifiedLink(applicationContext, "")
-            return Result.success()
-        }
-
-        val lastLink = AppPrefs.getLastAutoNotifiedLink(applicationContext)
-        if (lastLink == result.link) {
-            return Result.success()
-        }
-
-        ClipboardHelper.copyLink(applicationContext, result.link)
-        NotificationHelper.showFoundLinkNotification(
-            context = applicationContext,
-            link = result.link,
-            title = applicationContext.getString(R.string.notification_title_auto),
-            text = NotificationHelper.shorten(result.link)
-        )
-        AppPrefs.setLastAutoNotifiedLink(applicationContext, result.link)
-        return Result.success()
     }
 }
