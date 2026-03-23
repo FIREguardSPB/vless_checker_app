@@ -14,18 +14,20 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import com.example.vlesschecker.databinding.ActivityMainBinding
+import com.example.vlesschecker.databinding.ItemCheckedResultBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.DateFormat
-import java.util.Date
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var intervalMinutes: List<Int>
-    private lateinit var sourceItems: List<ListSource>
-    private var isProgrammaticTextChange = false
+    private val sourceItems = listOf(
+        ListSource.MANUAL,
+        ListSource.XRAY_AVAILABLE_ST_TOP100,
+        ListSource.XRAY_WHITE_LIST_ST_TOP100
+    )
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -63,35 +65,42 @@ class MainActivity : AppCompatActivity() {
         intervalMinutes = resources.getStringArray(R.array.auto_check_intervals_values)
             .map { it.toInt() }
 
-        sourceItems = listOf(
-            ListSource.LOCAL_MANUAL,
-            ListSource.REMOTE_AVAILABLE,
-            ListSource.REMOTE_WHITE
-        )
-
         val intervalLabels = resources.getStringArray(R.array.auto_check_intervals_labels)
         val intervalAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, intervalLabels)
         intervalAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.intervalSpinner.adapter = intervalAdapter
 
-        val sourceLabels = resources.getStringArray(R.array.source_labels)
+        val sourceLabels = sourceItems.map { it.displayName(this) }
         val sourceAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, sourceLabels)
         sourceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.sourceSpinner.adapter = sourceAdapter
 
         binding.linksEditText.doAfterTextChanged {
-            if (isProgrammaticTextChange) return@doAfterTextChanged
-            if (currentSource() == ListSource.LOCAL_MANUAL) {
+            if (currentSelectedSource() == ListSource.MANUAL) {
                 AppPrefs.setServerList(this, it?.toString().orEmpty())
             }
         }
 
-        binding.importButton.setOnClickListener {
-            importFileLauncher.launch(arrayOf("*/*"))
+        binding.sourceSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val source = sourceItems[position]
+                AppPrefs.setSelectedSource(this@MainActivity, source)
+                showSourcePreview(source)
+                renderCheckedResults(emptyList())
+                if (binding.autoCheckSwitch.isChecked) {
+                    updateAutoCheckState(notify = false)
+                }
+            }
+
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
 
-        binding.refreshRemoteButton.setOnClickListener {
-            refreshSelectedRemoteSource(showToast = true)
+        binding.refreshSourceButton.setOnClickListener {
+            refreshSelectedSource(showToast = true)
+        }
+
+        binding.importButton.setOnClickListener {
+            importFileLauncher.launch(arrayOf("*/*"))
         }
 
         binding.checkFirstButton.setOnClickListener {
@@ -102,15 +111,39 @@ class MainActivity : AppCompatActivity() {
             runFullCheck()
         }
 
-        binding.handoffButton.setOnClickListener {
-            handoffLastFastestLink()
+        binding.importFastestVpnButton.setOnClickListener {
+            importFastestIntoVpnClient()
         }
 
-        binding.vpnSettingsButton.setOnClickListener {
-            val opened = ConfigHandoffHelper.openVpnSettings(this)
-            if (!opened) {
-                Toast.makeText(this, R.string.vpn_settings_unavailable, Toast.LENGTH_SHORT).show()
-            }
+        binding.openVpnSettingsButton.setOnClickListener {
+            VpnImportHelper.openVpnSettings(this)
+        }
+
+        binding.startVpnButton.setOnClickListener {
+            val ok = VpnImportHelper.controlV2RayTun(this, VpnImportHelper.ControlAction.START)
+            Toast.makeText(
+                this,
+                if (ok) R.string.v2raytun_start_sent else R.string.v2raytun_control_missing,
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+
+        binding.stopVpnButton.setOnClickListener {
+            val ok = VpnImportHelper.controlV2RayTun(this, VpnImportHelper.ControlAction.STOP)
+            Toast.makeText(
+                this,
+                if (ok) R.string.v2raytun_stop_sent else R.string.v2raytun_control_missing,
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+
+        binding.restartVpnButton.setOnClickListener {
+            val ok = VpnImportHelper.controlV2RayTun(this, VpnImportHelper.ControlAction.RESTART)
+            Toast.makeText(
+                this,
+                if (ok) R.string.v2raytun_restart_sent else R.string.v2raytun_control_missing,
+                Toast.LENGTH_SHORT
+            ).show()
         }
 
         binding.autoCheckSwitch.setOnCheckedChangeListener { _, isChecked ->
@@ -133,30 +166,12 @@ class MainActivity : AppCompatActivity() {
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
-
-        binding.sourceSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                val selected = sourceItems[position]
-                AppPrefs.setSelectedSource(this@MainActivity, selected)
-                updateSourceUi(selected)
-                if (selected.isRemote) {
-                    refreshSelectedRemoteSource(showToast = false)
-                } else {
-                    loadLocalListIntoEditor()
-                }
-                if (binding.autoCheckSwitch.isChecked) {
-                    updateAutoCheckState(notify = false)
-                }
-            }
-
-            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
-        }
     }
 
     private fun loadInitialState() {
-        val localText = AppPrefs.getServerList(this).ifBlank { loadLinksFromAssets() }
+        val manualText = AppPrefs.getServerList(this).ifBlank { loadLinksFromAssets() }
         if (AppPrefs.getServerList(this).isBlank()) {
-            AppPrefs.setServerList(this, localText)
+            AppPrefs.setServerList(this, manualText)
         }
 
         binding.deleteDeadSwitch.isChecked = AppPrefs.isDeleteDeadOnFullScan(this)
@@ -167,20 +182,17 @@ class MainActivity : AppCompatActivity() {
         binding.intervalSpinner.setSelection(selectedIntervalIndex)
         updateIntervalHint(savedInterval)
 
-        val selectedSource = currentSource()
-        val sourceIndex = sourceItems.indexOf(selectedSource).takeIf { it >= 0 } ?: 0
-        binding.sourceSpinner.setSelection(sourceIndex)
-        updateSourceUi(selectedSource)
-        if (!selectedSource.isRemote) {
-            setEditorText(localText)
-        }
+        val selectedSource = AppPrefs.getSelectedSource(this)
+        val selectedSourceIndex = sourceItems.indexOf(selectedSource).takeIf { it >= 0 } ?: 0
+        binding.sourceSpinner.setSelection(selectedSourceIndex)
 
         binding.statusText.text = getString(R.string.ready_status)
         binding.resultText.text = ""
-        updateLastFastestHint()
+        renderCheckedResults(emptyList())
+        updateFastestActionsState(AppPrefs.getLastFastestLink(this))
 
-        if (selectedSource.isRemote) {
-            refreshSelectedRemoteSource(showToast = false)
+        if (selectedSource != ListSource.MANUAL && AppPrefs.getRemoteCache(this, selectedSource).isBlank()) {
+            refreshSelectedSource(showToast = false)
         }
 
         if (binding.autoCheckSwitch.isChecked) {
@@ -191,39 +203,125 @@ class MainActivity : AppCompatActivity() {
     private fun handleIntent(intent: Intent?) {
         val link = intent?.getStringExtra(NotificationHelper.EXTRA_FOUND_LINK).orEmpty()
         if (link.isBlank()) return
-        ClipboardHelper.copyLink(this, link)
-        AppPrefs.setLastFoundFastestLink(this, link)
-        updateLastFastestHint()
+        val prepared = VpnImportHelper.prepareClipboardConfig(link)
+        ClipboardHelper.copyLink(this, prepared)
+        AppPrefs.setLastFastestLink(this, prepared)
+        updateFastestActionsState(prepared)
         binding.resultText.text = buildString {
             appendLine(getString(R.string.last_found_from_notification))
             appendLine()
-            append(link)
+            append(prepared)
         }
         intent?.removeExtra(NotificationHelper.EXTRA_FOUND_LINK)
         Toast.makeText(this, R.string.copied_from_notification, Toast.LENGTH_SHORT).show()
     }
 
-    private fun runFastestCheck() {
+    private fun showSourcePreview(source: ListSource) {
+        when (source) {
+            ListSource.MANUAL -> {
+                val text = AppPrefs.getServerList(this).ifBlank { loadLinksFromAssets() }
+                updateLinksEditorText(text)
+                binding.statusText.text = getString(R.string.source_selected_status, source.displayName(this))
+                binding.resultText.text = getString(
+                    R.string.manual_source_lines_count,
+                    VlessChecker.normalizeLines(text).size
+                )
+            }
+            else -> {
+                val cached = AppPrefs.getRemoteCache(this, source)
+                val previewText = cached.ifBlank {
+                    getString(R.string.remote_source_placeholder, source.displayName(this))
+                }
+                updateLinksEditorText(previewText)
+                binding.statusText.text = getString(R.string.source_selected_status, source.displayName(this))
+                binding.resultText.text = if (cached.isBlank()) {
+                    getString(R.string.remote_source_not_loaded_yet)
+                } else {
+                    getString(
+                        R.string.remote_source_cached_lines_count,
+                        VlessChecker.normalizeLines(cached).size,
+                        source.displayName(this)
+                    )
+                }
+            }
+        }
+    }
+
+    private fun refreshSelectedSource(showToast: Boolean) {
+        val source = currentSelectedSource()
+        renderCheckedResults(emptyList())
+        if (source == ListSource.MANUAL) {
+            binding.statusText.text = getString(R.string.manual_source_no_refresh_needed)
+            if (showToast) {
+                Toast.makeText(this, R.string.manual_source_no_refresh_needed, Toast.LENGTH_SHORT).show()
+            }
+            return
+        }
+
         setBusy(true)
-        binding.statusText.text = getString(R.string.preparing_source)
+        binding.statusText.text = getString(R.string.loading_selected_source, source.displayName(this))
         binding.resultText.text = ""
 
         lifecycleScope.launch {
             try {
-                val resolved = withContext(Dispatchers.IO) { resolveCurrentSourceText(forceRefreshRemote = true) }
-                val links = VlessChecker.normalizeLines(resolved.text)
-                updateEditorFromResolvedSource(resolved.source, resolved.text)
+                val result = withContext(Dispatchers.IO) {
+                    RemoteListRepository.loadForSource(
+                        context = this@MainActivity,
+                        source = source,
+                        preferFreshRemote = true
+                    )
+                }
+                updateLinksEditorText(result.rawText)
+                binding.statusText.text = getString(
+                    R.string.remote_source_loaded_status,
+                    result.sourceLabel,
+                    result.links.size
+                )
+                binding.resultText.text = buildSourceInfoBlock(result)
+                if (showToast) {
+                    Toast.makeText(this@MainActivity, R.string.remote_source_loaded_toast, Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                binding.statusText.text = getString(R.string.remote_source_failed)
+                binding.resultText.text = e.message ?: getString(R.string.remote_source_failed)
+                if (showToast) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        e.message ?: getString(R.string.remote_source_failed),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            } finally {
+                setBusy(false)
+            }
+        }
+    }
 
+    private fun runFastestCheck() {
+        setBusy(true)
+        renderCheckedResults(emptyList())
+        binding.statusText.text = getString(
+            R.string.preparing_source_for_check,
+            currentSelectedSource().displayName(this)
+        )
+        binding.resultText.text = ""
+
+        lifecycleScope.launch {
+            try {
+                val sourceResult = loadActiveSourceText(forceRemoteRefresh = currentSelectedSource() != ListSource.MANUAL)
+                val links = sourceResult.links
                 if (links.isEmpty()) {
-                    setBusy(false)
                     binding.statusText.text = getString(R.string.empty_list)
-                    binding.resultText.text = ""
-                    maybeShowWarning(resolved.warning)
+                    binding.resultText.text = buildSourceInfoBlock(sourceResult)
+                    updateFastestActionsState("")
                     return@launch
                 }
 
-                binding.statusText.text = getString(R.string.checking_links_count, links.size)
-                maybeShowWarning(resolved.warning)
+                binding.statusText.text = getString(
+                    R.string.checking_links_count_with_source,
+                    links.size,
+                    sourceResult.sourceLabel
+                )
 
                 val batch = withContext(Dispatchers.IO) {
                     VlessChecker.checkAll(links) { checked, total, current ->
@@ -238,62 +336,79 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                setBusy(false)
+                renderCheckedResults(batch.checked)
 
                 val fastest = batch.working.firstOrNull()
                 if (fastest == null) {
+                    AppPrefs.setLastFastestLink(this@MainActivity, "")
+                    updateFastestActionsState("")
                     binding.statusText.text = getString(R.string.no_working_found)
-                    binding.resultText.text = buildDetailedList(batch)
+                    binding.resultText.text = buildDetailedList(sourceResult, batch)
                     Toast.makeText(this@MainActivity, R.string.no_working_found, Toast.LENGTH_SHORT).show()
                 } else {
-                    rememberAndNotifyFastest(fastest, getString(R.string.notification_title_fastest))
+                    onFastestChosen(fastest)
+                    NotificationHelper.showFoundLinkNotification(
+                        context = this@MainActivity,
+                        link = fastest.link,
+                        title = getString(R.string.notification_title_fastest),
+                        text = getString(
+                            R.string.notification_fastest_text,
+                            fastest.latencyMs,
+                            NotificationHelper.shorten(fastest.link, 56)
+                        )
+                    )
                     binding.statusText.text = getString(
                         R.string.fastest_working_found_with_source,
-                        sourceDisplayName(resolved.source)
+                        sourceResult.sourceLabel
                     )
                     binding.resultText.text = buildString {
                         appendLine(getString(R.string.fastest_summary_title))
-                        appendLine(getString(R.string.source_label, sourceDisplayName(resolved.source)))
+                        appendLine(getString(R.string.source_label, sourceResult.sourceLabel))
                         appendLine(getString(R.string.latency_label, fastest.latencyMs))
                         appendLine(getString(R.string.check_type_label, fastest.checkType))
                         appendLine(getString(R.string.host_label, fastest.host, fastest.port))
                         appendLine()
-                        appendLine(fastest.link)
+                        appendLine(VpnImportHelper.prepareClipboardConfig(fastest.link))
                         appendLine()
-                        append(buildDetailedList(batch))
+                        append(buildDetailedList(sourceResult, batch))
                     }
                     Toast.makeText(this@MainActivity, R.string.fastest_copied_to_clipboard, Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
+                binding.statusText.text = getString(R.string.operation_failed)
+                binding.resultText.text = e.message ?: getString(R.string.operation_failed)
+                Toast.makeText(this@MainActivity, binding.resultText.text, Toast.LENGTH_LONG).show()
+            } finally {
                 setBusy(false)
-                binding.statusText.text = getString(R.string.remote_load_failed)
-                binding.resultText.text = e.message.orEmpty()
-                Toast.makeText(this@MainActivity, e.message ?: getString(R.string.remote_load_failed), Toast.LENGTH_LONG).show()
             }
         }
     }
 
     private fun runFullCheck() {
         setBusy(true)
-        binding.statusText.text = getString(R.string.preparing_source)
+        renderCheckedResults(emptyList())
+        binding.statusText.text = getString(
+            R.string.preparing_source_for_check,
+            currentSelectedSource().displayName(this)
+        )
         binding.resultText.text = ""
 
         lifecycleScope.launch {
             try {
-                val resolved = withContext(Dispatchers.IO) { resolveCurrentSourceText(forceRefreshRemote = true) }
-                val links = VlessChecker.normalizeLines(resolved.text)
-                updateEditorFromResolvedSource(resolved.source, resolved.text)
-
+                val sourceResult = loadActiveSourceText(forceRemoteRefresh = currentSelectedSource() != ListSource.MANUAL)
+                val links = sourceResult.links
                 if (links.isEmpty()) {
-                    setBusy(false)
                     binding.statusText.text = getString(R.string.empty_list)
-                    binding.resultText.text = ""
-                    maybeShowWarning(resolved.warning)
+                    binding.resultText.text = buildSourceInfoBlock(sourceResult)
+                    updateFastestActionsState("")
                     return@launch
                 }
 
-                binding.statusText.text = getString(R.string.full_check_started, links.size)
-                maybeShowWarning(resolved.warning)
+                binding.statusText.text = getString(
+                    R.string.full_check_started_with_source,
+                    links.size,
+                    sourceResult.sourceLabel
+                )
 
                 val batch = withContext(Dispatchers.IO) {
                     VlessChecker.checkAll(links) { checked, total, current ->
@@ -308,29 +423,32 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                setBusy(false)
+                renderCheckedResults(batch.checked)
 
                 val workingLinks = batch.working.map { it.link }
                 val fastest = batch.working.firstOrNull()
                 if (fastest != null) {
-                    rememberAndNotifyFastest(
-                        fastest = fastest,
-                        title = getString(R.string.notification_title_all, batch.working.size)
+                    onFastestChosen(fastest)
+                    NotificationHelper.showFoundLinkNotification(
+                        context = this@MainActivity,
+                        link = fastest.link,
+                        title = getString(R.string.notification_title_all, batch.working.size),
+                        text = getString(
+                            R.string.notification_fastest_text,
+                            fastest.latencyMs,
+                            NotificationHelper.shorten(fastest.link, 56)
+                        )
                     )
+                } else {
+                    AppPrefs.setLastFastestLink(this@MainActivity, "")
+                    updateFastestActionsState("")
                 }
 
                 if (binding.deleteDeadSwitch.isChecked) {
                     val newText = workingLinks.joinToString("\n")
-                    when (resolved.source) {
-                        ListSource.LOCAL_MANUAL -> {
-                            setEditorText(newText)
-                            AppPrefs.setServerList(this@MainActivity, newText)
-                        }
-                        else -> {
-                            AppPrefs.setRemoteCache(this@MainActivity, resolved.source, newText)
-                            AppPrefs.setRemoteCacheTimestamp(this@MainActivity, resolved.source, System.currentTimeMillis())
-                            updateEditorFromResolvedSource(resolved.source, newText)
-                        }
+                    updateLinksEditorText(newText)
+                    if (currentSelectedSource() == ListSource.MANUAL) {
+                        AppPrefs.setServerList(this@MainActivity, newText)
                     }
                 }
 
@@ -341,14 +459,14 @@ class MainActivity : AppCompatActivity() {
                     batch.skipped.size
                 )
                 binding.resultText.text = buildString {
-                    appendLine(getString(R.string.source_label, sourceDisplayName(resolved.source)))
                     if (fastest != null) {
                         appendLine(getString(R.string.fastest_summary_title))
+                        appendLine(getString(R.string.source_label, sourceResult.sourceLabel))
                         appendLine(getString(R.string.latency_label, fastest.latencyMs))
                         appendLine(getString(R.string.host_label, fastest.host, fastest.port))
                         appendLine()
                     }
-                    append(buildDetailedList(batch))
+                    append(buildDetailedList(sourceResult, batch))
                 }
 
                 if (workingLinks.isNotEmpty()) {
@@ -362,16 +480,43 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this@MainActivity, R.string.no_working_found, Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
+                binding.statusText.text = getString(R.string.operation_failed)
+                binding.resultText.text = e.message ?: getString(R.string.operation_failed)
+                Toast.makeText(this@MainActivity, binding.resultText.text, Toast.LENGTH_LONG).show()
+            } finally {
                 setBusy(false)
-                binding.statusText.text = getString(R.string.remote_load_failed)
-                binding.resultText.text = e.message.orEmpty()
-                Toast.makeText(this@MainActivity, e.message ?: getString(R.string.remote_load_failed), Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    private fun buildDetailedList(batch: BatchCheckResult): String {
+    private suspend fun loadActiveSourceText(forceRemoteRefresh: Boolean): SourceTextResult {
+        val source = currentSelectedSource()
+        return if (source == ListSource.MANUAL) {
+            val manualText = binding.linksEditText.text?.toString().orEmpty()
+            AppPrefs.setServerList(this, manualText)
+            SourceTextResult(
+                source = source,
+                rawText = manualText,
+                sourceLabel = source.displayName(this),
+                fetchedFresh = false,
+                fromCache = false
+            )
+        } else {
+            val result = withContext(Dispatchers.IO) {
+                RemoteListRepository.loadForSource(
+                    context = this@MainActivity,
+                    source = source,
+                    preferFreshRemote = forceRemoteRefresh
+                )
+            }
+            updateLinksEditorText(result.rawText)
+            result
+        }
+    }
+
+    private fun buildDetailedList(sourceResult: SourceTextResult, batch: BatchCheckResult): String {
         return buildString {
+            append(buildSourceInfoBlock(sourceResult))
             appendLine(getString(R.string.working_count, batch.working.size))
             appendLine(getString(R.string.failed_count, batch.failed.size))
             appendLine(getString(R.string.skipped_count, batch.skipped.size))
@@ -400,6 +545,78 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun buildSourceInfoBlock(sourceResult: SourceTextResult): String {
+        return buildString {
+            appendLine(getString(R.string.source_label, sourceResult.sourceLabel))
+            when {
+                sourceResult.fetchedFresh -> appendLine(getString(R.string.source_mode_fresh))
+                sourceResult.fromCache -> appendLine(getString(R.string.source_mode_cache))
+                else -> appendLine(getString(R.string.source_mode_local))
+            }
+            if (!sourceResult.warningMessage.isNullOrBlank()) {
+                appendLine(getString(R.string.source_warning, sourceResult.warningMessage))
+            }
+            appendLine(getString(R.string.source_lines_count, sourceResult.links.size))
+            appendLine()
+        }
+    }
+
+    private fun renderCheckedResults(items: List<LinkCheckResult>) {
+        binding.checkedResultsContainer.removeAllViews()
+        val visible = items.isNotEmpty()
+        binding.checkedResultsTitle.visibility = if (visible) View.VISIBLE else View.GONE
+        binding.checkedResultsHint.visibility = if (visible) View.VISIBLE else View.GONE
+        binding.checkedResultsContainer.visibility = if (visible) View.VISIBLE else View.GONE
+
+        items.forEachIndexed { index, item ->
+            val row = ItemCheckedResultBinding.inflate(layoutInflater, binding.checkedResultsContainer, false)
+            row.indexText.text = getString(R.string.checked_item_title, index + 1)
+            row.statusText.text = buildRowStatus(item)
+            row.endpointText.text = buildRowEndpoint(item)
+            row.configPreviewText.text = item.link.trim()
+            row.root.setOnClickListener {
+                val prepared = VpnImportHelper.prepareClipboardConfig(item.link)
+                ClipboardHelper.copyLink(this, prepared)
+                Toast.makeText(
+                    this,
+                    getString(R.string.checked_item_copied_to_clipboard, index + 1),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            row.root.setOnLongClickListener {
+                val openedDirectly = VpnImportHelper.importOrShare(this, item.link)
+                val messageRes = if (openedDirectly) {
+                    R.string.fastest_sent_to_vpn_client
+                } else {
+                    R.string.fastest_sent_via_share
+                }
+                Toast.makeText(this, messageRes, Toast.LENGTH_SHORT).show()
+                true
+            }
+            binding.checkedResultsContainer.addView(row.root)
+        }
+    }
+
+    private fun buildRowStatus(item: LinkCheckResult): String {
+        val icon = when {
+            item.isWorking -> "✅"
+            item.host == null -> "⚠️"
+            else -> "❌"
+        }
+        val latency = item.latencyMs?.let { getString(R.string.latency_label, it) }
+            ?: getString(R.string.latency_unknown_label)
+        return "$icon ${item.statusText} · $latency"
+    }
+
+    private fun buildRowEndpoint(item: LinkCheckResult): String {
+        val endpoint = if (item.host != null && item.port != null) {
+            "${item.host}:${item.port}"
+        } else {
+            getString(R.string.unknown_endpoint)
+        }
+        return getString(R.string.checked_item_meta, endpoint, item.checkType)
+    }
+
     private fun importLinksFromUri(uri: Uri) {
         try {
             contentResolver.takePersistableUriPermission(
@@ -418,113 +635,54 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        AppPrefs.setSelectedSource(this, ListSource.LOCAL_MANUAL)
-        binding.sourceSpinner.setSelection(sourceItems.indexOf(ListSource.LOCAL_MANUAL))
-        setEditorText(text)
+        AppPrefs.setSelectedSource(this, ListSource.MANUAL)
+        binding.sourceSpinner.setSelection(sourceItems.indexOf(ListSource.MANUAL))
+        updateLinksEditorText(text)
         AppPrefs.setServerList(this, text)
+        renderCheckedResults(emptyList())
         binding.statusText.text = getString(R.string.import_success)
-        binding.resultText.text = getString(R.string.imported_lines_count, VlessChecker.normalizeLines(text).size)
+        binding.resultText.text = buildString {
+            appendLine(getString(R.string.imported_lines_count, VlessChecker.normalizeLines(text).size))
+            appendLine(getString(R.string.import_switched_to_manual))
+        }
         Toast.makeText(this, R.string.import_success, Toast.LENGTH_SHORT).show()
     }
 
-    private fun refreshSelectedRemoteSource(showToast: Boolean) {
-        val source = currentSource()
-        if (!source.isRemote) {
-            if (showToast) {
-                Toast.makeText(this, R.string.remote_refresh_only_for_remote, Toast.LENGTH_SHORT).show()
-            }
-            return
-        }
-
-        binding.statusText.text = getString(R.string.remote_loading_started, sourceDisplayName(source))
-        lifecycleScope.launch {
-            try {
-                val result = withContext(Dispatchers.IO) {
-                    RemoteListRepository.loadForSource(
-                        context = this@MainActivity,
-                        source = source,
-                        forceRefresh = true
-                    )
-                }
-                updateEditorFromResolvedSource(source, result.text)
-                val message = if (result.usedCache) {
-                    getString(R.string.remote_loaded_cache, sourceDisplayName(source))
-                } else {
-                    getString(R.string.remote_loaded_fresh, sourceDisplayName(source))
-                }
-                binding.statusText.text = message
-                binding.resultText.text = getString(
-                    R.string.imported_lines_count,
-                    VlessChecker.normalizeLines(result.text).size
-                )
-                updateSourceUi(source)
-                if (showToast) {
-                    Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
-                }
-                maybeShowWarning(result.warning)
-            } catch (e: Exception) {
-                binding.statusText.text = getString(R.string.remote_load_failed)
-                binding.resultText.text = e.message.orEmpty()
-                if (showToast) {
-                    Toast.makeText(this@MainActivity, e.message ?: getString(R.string.remote_load_failed), Toast.LENGTH_LONG).show()
-                }
-            }
-        }
-    }
-
-    private suspend fun resolveCurrentSourceText(forceRefreshRemote: Boolean): ResolvedSourceText {
-        val source = currentSource()
-        return when (source) {
-            ListSource.LOCAL_MANUAL -> {
-                val text = binding.linksEditText.text?.toString().orEmpty()
-                AppPrefs.setServerList(this, text)
-                ResolvedSourceText(source = source, text = text, warning = null)
-            }
-            else -> {
-                val loaded = RemoteListRepository.loadForSource(
-                    context = this@MainActivity,
-                    source = source,
-                    forceRefresh = forceRefreshRemote
-                )
-                ResolvedSourceText(source = source, text = loaded.text, warning = loaded.warning)
-            }
-        }
-    }
-
-    private fun rememberAndNotifyFastest(fastest: CheckResult, title: String) {
-        ClipboardHelper.copyLink(this, fastest.link)
-        AppPrefs.setLastFoundFastestLink(this, fastest.link)
-        updateLastFastestHint()
-        NotificationHelper.showFoundLinkNotification(
-            context = this,
-            link = fastest.link,
-            title = title,
-            text = getString(
-                R.string.notification_fastest_text,
-                fastest.latencyMs,
-                NotificationHelper.shorten(fastest.link, 56)
-            )
-        )
-    }
-
-    private fun handoffLastFastestLink() {
-        val link = AppPrefs.getLastFoundFastestLink(this)
+    private fun importFastestIntoVpnClient() {
+        val link = AppPrefs.getLastFastestLink(this)
         if (link.isBlank()) {
-            Toast.makeText(this, R.string.no_saved_fastest_for_handoff, Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, R.string.no_fastest_to_import, Toast.LENGTH_SHORT).show()
             return
         }
-        val handedOff = ConfigHandoffHelper.handoffToCompatibleApp(this, link)
-        if (handedOff) {
-            Toast.makeText(this, R.string.handoff_started, Toast.LENGTH_SHORT).show()
+
+        val openedDirectly = VpnImportHelper.importOrShare(this, link)
+        val messageRes = if (openedDirectly) {
+            R.string.fastest_sent_to_vpn_client
         } else {
-            Toast.makeText(this, R.string.handoff_failed, Toast.LENGTH_SHORT).show()
+            R.string.fastest_sent_via_share
         }
+        Toast.makeText(this, messageRes, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun onFastestChosen(fastest: CheckResult) {
+        val prepared = VpnImportHelper.prepareClipboardConfig(fastest.link)
+        ClipboardHelper.copyLink(this, prepared)
+        AppPrefs.setLastFastestLink(this, prepared)
+        updateFastestActionsState(prepared)
+    }
+
+    private fun updateFastestActionsState(link: String) {
+        val hasLink = link.isNotBlank()
+        binding.importFastestVpnButton.isEnabled = hasLink
     }
 
     private fun updateAutoCheckState(notify: Boolean) {
         val interval = AppPrefs.getAutoCheckIntervalMinutes(this)
         updateIntervalHint(interval)
         if (binding.autoCheckSwitch.isChecked) {
+            if (currentSelectedSource() == ListSource.MANUAL) {
+                AppPrefs.setServerList(this, binding.linksEditText.text?.toString().orEmpty())
+            }
             AutoCheckScheduler.schedule(this, interval)
             if (notify) {
                 Toast.makeText(this, getString(R.string.auto_check_enabled_toast, interval), Toast.LENGTH_SHORT).show()
@@ -538,84 +696,44 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateIntervalHint(interval: Int) {
-        binding.autoCheckHint.text = getString(R.string.auto_check_hint, interval)
-    }
-
-    private fun updateSourceUi(source: ListSource) {
-        val isLocal = source == ListSource.LOCAL_MANUAL
-        binding.importButton.isEnabled = isLocal
-        binding.refreshRemoteButton.isEnabled = source.isRemote
-        binding.linksEditText.isEnabled = true
-        binding.linksEditText.isFocusable = isLocal
-        binding.linksEditText.isFocusableInTouchMode = isLocal
-        binding.linksEditText.isCursorVisible = isLocal
-        binding.linksEditText.isLongClickable = true
-
-        val sourceInfo = when (source) {
-            ListSource.LOCAL_MANUAL -> getString(R.string.source_info_local)
-            else -> {
-                val ts = AppPrefs.getRemoteCacheTimestamp(this, source)
-                if (ts > 0L) {
-                    val formatted = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
-                        .format(Date(ts))
-                    getString(R.string.source_info_remote_with_time, sourceDisplayName(source), formatted)
-                } else {
-                    getString(R.string.source_info_remote_without_time, sourceDisplayName(source))
-                }
-            }
-        }
-        binding.sourceInfoText.text = sourceInfo
-    }
-
-    private fun updateLastFastestHint() {
-        val last = AppPrefs.getLastFoundFastestLink(this)
-        binding.lastFastestText.text = if (last.isBlank()) {
-            getString(R.string.last_fastest_empty)
-        } else {
-            getString(R.string.last_fastest_value, NotificationHelper.shorten(last, 88))
-        }
-    }
-
-    private fun loadLocalListIntoEditor() {
-        val text = AppPrefs.getServerList(this).ifBlank { loadLinksFromAssets() }
-        if (AppPrefs.getServerList(this).isBlank()) {
-            AppPrefs.setServerList(this, text)
-        }
-        setEditorText(text)
-    }
-
-    private fun updateEditorFromResolvedSource(source: ListSource, text: String) {
-        if (currentSource() == source) {
-            setEditorText(text)
-            updateSourceUi(source)
-        }
-    }
-
-    private fun setEditorText(text: String) {
-        isProgrammaticTextChange = true
-        binding.linksEditText.setText(text)
-        isProgrammaticTextChange = false
-    }
-
-    private fun maybeShowWarning(warning: String?) {
-        if (!warning.isNullOrBlank()) {
-            Toast.makeText(this, getString(R.string.remote_warning_using_cache, warning), Toast.LENGTH_LONG).show()
-        }
+        binding.autoCheckHint.text = getString(
+            R.string.auto_check_hint_with_source,
+            interval,
+            currentSelectedSource().displayName(this)
+        )
     }
 
     private fun setBusy(isBusy: Boolean) {
         binding.checkFirstButton.isEnabled = !isBusy
         binding.checkAllButton.isEnabled = !isBusy
-        binding.importButton.isEnabled = !isBusy && currentSource() == ListSource.LOCAL_MANUAL
-        binding.refreshRemoteButton.isEnabled = !isBusy && currentSource().isRemote
-        binding.handoffButton.isEnabled = !isBusy
-        binding.vpnSettingsButton.isEnabled = !isBusy
+        binding.importButton.isEnabled = !isBusy
+        binding.refreshSourceButton.isEnabled = !isBusy
+        binding.sourceSpinner.isEnabled = !isBusy
+        binding.intervalSpinner.isEnabled = !isBusy
+        binding.autoCheckSwitch.isEnabled = !isBusy
+        binding.deleteDeadSwitch.isEnabled = !isBusy
+        binding.importFastestVpnButton.isEnabled = !isBusy && AppPrefs.getLastFastestLink(this).isNotBlank()
+        binding.openVpnSettingsButton.isEnabled = !isBusy
+        binding.startVpnButton.isEnabled = !isBusy
+        binding.stopVpnButton.isEnabled = !isBusy
+        binding.restartVpnButton.isEnabled = !isBusy
         binding.progressBar.visibility = if (isBusy) View.VISIBLE else View.GONE
     }
 
     private fun requestNotificationPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    private fun currentSelectedSource(): ListSource {
+        val position = binding.sourceSpinner.selectedItemPosition.coerceIn(0, sourceItems.lastIndex)
+        return sourceItems[position]
+    }
+
+    private fun updateLinksEditorText(text: String) {
+        if (binding.linksEditText.text?.toString() != text) {
+            binding.linksEditText.setText(text)
         }
     }
 
@@ -626,22 +744,4 @@ class MainActivity : AppCompatActivity() {
             ""
         }
     }
-
-    private fun sourceDisplayName(source: ListSource): String {
-        return when (source) {
-            ListSource.LOCAL_MANUAL -> getString(R.string.source_local_manual)
-            ListSource.REMOTE_AVAILABLE -> getString(R.string.source_remote_available)
-            ListSource.REMOTE_WHITE -> getString(R.string.source_remote_white)
-        }
-    }
-
-    private fun currentSource(): ListSource {
-        return ListSource.fromPref(AppPrefs.getSelectedSource(this))
-    }
-
-    private data class ResolvedSourceText(
-        val source: ListSource,
-        val text: String,
-        val warning: String?
-    )
 }

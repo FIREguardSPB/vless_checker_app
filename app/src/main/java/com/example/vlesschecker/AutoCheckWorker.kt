@@ -12,22 +12,19 @@ class AutoCheckWorker(
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
-        NotificationHelper.createChannel(applicationContext)
-
         return try {
-            val selectedSource = ListSource.fromPref(AppPrefs.getSelectedSource(applicationContext))
-            val rawText = withContext(Dispatchers.IO) {
-                when (selectedSource) {
-                    ListSource.LOCAL_MANUAL -> AppPrefs.getServerList(applicationContext)
-                    else -> RemoteListRepository.loadForSource(
-                        context = applicationContext,
-                        source = selectedSource,
-                        forceRefresh = true
-                    ).text
-                }
+            NotificationHelper.createChannel(applicationContext)
+
+            val selectedSource = AppPrefs.getSelectedSource(applicationContext)
+            val sourceResult = withContext(Dispatchers.IO) {
+                RemoteListRepository.loadForSource(
+                    context = applicationContext,
+                    source = selectedSource,
+                    preferFreshRemote = selectedSource != ListSource.MANUAL
+                )
             }
 
-            val links = VlessChecker.normalizeLines(rawText)
+            val links = sourceResult.links
             if (links.isEmpty()) return Result.success()
 
             val result = withContext(Dispatchers.IO) {
@@ -39,22 +36,23 @@ class AutoCheckWorker(
                 return Result.success()
             }
 
-            AppPrefs.setLastFoundFastestLink(applicationContext, result.link)
-
             val lastLink = AppPrefs.getLastAutoNotifiedLink(applicationContext)
             if (lastLink == result.link) {
                 return Result.success()
             }
 
-            ClipboardHelper.copyLink(applicationContext, result.link)
+            val prepared = VpnImportHelper.prepareClipboardConfig(result.link)
+            ClipboardHelper.copyLink(applicationContext, prepared)
+            AppPrefs.setLastFastestLink(applicationContext, prepared)
             NotificationHelper.showFoundLinkNotification(
                 context = applicationContext,
                 link = result.link,
                 title = applicationContext.getString(R.string.notification_title_auto),
                 text = applicationContext.getString(
-                    R.string.notification_fastest_text,
+                    R.string.notification_fastest_text_with_source,
                     result.latencyMs,
-                    NotificationHelper.shorten(result.link, 56)
+                    sourceResult.sourceLabel,
+                    NotificationHelper.shorten(result.link, 48)
                 )
             )
             AppPrefs.setLastAutoNotifiedLink(applicationContext, result.link)

@@ -2,15 +2,16 @@
     <string name="app_name">VLESS Checker</string>
     <string name="notification_channel_name">Результаты проверки VLESS</string>
     <string name="notification_channel_description">Уведомления о найденных рабочих VLESS-ссылках</string>
-    <string name="notification_title_fastest">Найдена самая быстрая VLESS-ссылка</string>
+    <string name="notification_title_fastest">Найдена самая быстрая ссылка</string>
     <string name="notification_title_auto">Автопроверка нашла самую быструю ссылку</string>
     <string name="notification_title_all">Найдено рабочих ссылок: %1$d</string>
     <string name="notification_fastest_text">%1$d мс — %2$s</string>
+    <string name="notification_fastest_text_with_source">%1$d мс — %2$s — %3$s</string>
     <string name="notification_permission_denied">Разрешение на уведомления не выдано</string>
     <string name="ready_status">Готово к проверке</string>
-    <string name="preparing_source">Подготавливаю выбранный список…</string>
     <string name="empty_list">Список пуст</string>
     <string name="checking_links_count">Проверяю %1$d ссылок…</string>
+    <string name="checking_links_count_with_source">Проверяю %1$d ссылок из источника: %2$s…</string>
     <string name="check_progress">Проверяю %1$d/%2$d: %3$s</string>
     <string name="no_working_found">Рабочая ссылка не найдена</string>
     <string name="no_link_passed">Ни одна ссылка не прошла проверку.</string>
@@ -18,11 +19,12 @@
     <string name="fastest_working_found_with_source">Найдена самая быстрая рабочая ссылка из источника: %1$s</string>
     <string name="fastest_summary_title">Самая быстрая рабочая ссылка:</string>
     <string name="check_type_label">Проверка: %1$s</string>
-    <string name="source_label">Источник: %1$s</string>
     <string name="host_label">Хост: %1$s:%2$d</string>
     <string name="latency_label">Время отклика: %1$d мс</string>
+    <string name="latency_unknown_label">Время отклика: —</string>
     <string name="fastest_copied_to_clipboard">Самая быстрая ссылка скопирована в буфер</string>
     <string name="full_check_started">Полная проверка %1$d ссылок…</string>
+    <string name="full_check_started_with_source">Полная проверка %1$d ссылок из источника: %2$s…</string>
     <string name="full_check_done">Полная проверка завершена. Рабочих: %1$d, нерабочих: %2$d, пропущено: %3$d</string>
     <string name="working_count">Рабочих ссылок: %1$d</string>
     <string name="failed_count">Нерабочих ссылок: %1$d</string>
@@ -30,34 +32,49 @@
     <string name="all_results_title">Результаты по всем ссылкам:</string>
     <string name="result_line_format">%1$d. %2$s %3$s — %4$s — %5$s</string>
     <string name="unknown_endpoint">неизвестный хост</string>
-    <string name="full_check_done_and_cleaned">Полная проверка завершена, список очищен от нерабочих ссылок</string>
+    <string name="full_check_done_and_cleaned">Полная проверка завершена, нерабочие строки убраны с экрана</string>
     <string name="import_success">Список импортирован</string>
     <string name="import_failed">Не удалось импортировать файл</string>
     <string name="imported_lines_count">Импортировано строк: %1$d</string>
-    <string name="auto_check_hint">Автопроверка работает через WorkManager с интервалом %1$d мин.</string>
+    <string name="import_switched_to_manual">Источник автоматически переключён на локальный список.</string>
+    <string name="auto_check_hint_with_source">Автопроверка работает через WorkManager с интервалом %1$d мин. Источник: %2$s.</string>
     <string name="auto_check_enabled_toast">Автопроверка включена: каждые %1$d мин.</string>
     <string name="auto_check_disabled_toast">Автопроверка отключена</string>
     <string name="last_found_from_notification">Ссылка из уведомления повторно скопирована в буфер:</string>
     <string name="copied_from_notification">Ссылка из уведомления скопирована в буфер</string>
-    <string name="source_local_manual">Локальный список</string>
-    <string name="source_remote_available">WhitePrime available_st(top100)</string>
-    <string name="source_remote_white">WhitePrime white-list_available_st(top100)</string>
-    <string name="source_info_local">Локальный список можно редактировать, импортировать и очищать.</string>
-    <string name="source_info_remote_without_time">Удалённый список: %1$s. Кэш ещё не загружен.</string>
-    <string name="source_info_remote_with_time">Удалённый список: %1$s. Последнее обновление кэша: %2$s</string>
-    <string name="remote_loading_started">Загружаю удалённый список: %1$s…</string>
-    <string name="remote_loaded_fresh">Удалённый список обновлён: %1$s</string>
-    <string name="remote_loaded_cache">Не удалось обновить удалённый список, использован кэш: %1$s</string>
-    <string name="remote_load_failed">Не удалось загрузить удалённый список</string>
-    <string name="remote_refresh_only_for_remote">Эта кнопка работает только для удалённых списков</string>
-    <string name="remote_warning_using_cache">Использован кэш. Причина: %1$s</string>
-    <string name="handoff_chooser_title">Передать ссылку в VPN-клиент</string>
-    <string name="handoff_started">Ссылка передана во внешнее приложение</string>
-    <string name="handoff_failed">Не удалось передать ссылку во внешнее приложение</string>
-    <string name="no_saved_fastest_for_handoff">Сначала нужно найти самую быструю ссылку</string>
-    <string name="vpn_settings_unavailable">Настройки VPN недоступны на этом устройстве</string>
-    <string name="last_fastest_empty">Последняя выбранная самая быстрая ссылка: пока нет</string>
-    <string name="last_fastest_value">Последняя выбранная самая быстрая ссылка: %1$s</string>
+    <string name="source_manual_label">Локальный список</string>
+    <string name="source_xray_available_label">XRayCheck available(top100)</string>
+    <string name="source_xray_whitelist_label">XRayCheck white-list_available(top100)</string>
+    <string name="source_selected_status">Выбран источник: %1$s</string>
+    <string name="manual_source_lines_count">Локальных строк: %1$d</string>
+    <string name="remote_source_placeholder">Для источника %1$s список ещё не подтянут. Нажми кнопку «Подтянуть выбранный список» или сразу запускай проверку.</string>
+    <string name="remote_source_not_loaded_yet">Удалённый список ещё не загружен.</string>
+    <string name="remote_source_cached_lines_count">Кэшировано строк: %1$d. Источник: %2$s.</string>
+    <string name="manual_source_no_refresh_needed">Для локального списка обновление не требуется</string>
+    <string name="loading_selected_source">Загружаю источник: %1$s…</string>
+    <string name="remote_source_loaded_status">Список загружен: %1$s. Строк: %2$d</string>
+    <string name="remote_source_loaded_toast">Удалённый список обновлён</string>
+    <string name="remote_source_failed">Не удалось загрузить удалённый список</string>
+    <string name="preparing_source_for_check">Подготавливаю источник для проверки: %1$s…</string>
+    <string name="source_label">Источник: %1$s</string>
+    <string name="source_mode_local">Режим: локальный список</string>
+    <string name="source_mode_fresh">Режим: удалённый список, загружен сейчас</string>
+    <string name="source_mode_cache">Режим: удалённый список из кэша</string>
+    <string name="source_warning">Предупреждение: %1$s</string>
+    <string name="source_lines_count">Строк для проверки: %1$d</string>
+    <string name="operation_failed">Операция завершилась с ошибкой</string>
+    <string name="no_fastest_to_import">Сначала найди самую быструю ссылку</string>
+    <string name="fastest_sent_to_vpn_client">Ссылка передана в совместимый VPN-клиент</string>
+    <string name="fastest_sent_via_share">Прямой импорт не найден, открыт share chooser</string>
+    <string name="share_fastest_subject">Самая быстрая VPN-ссылка</string>
+    <string name="share_fastest_chooser">Передать ссылку в приложение</string>
+    <string name="checked_item_title">Конфиг #%1$d</string>
+    <string name="checked_item_meta">Endpoint: %1$s · %2$s</string>
+    <string name="checked_item_copied_to_clipboard">Конфиг #%1$d скопирован в буфер для v2RayTun</string>
+    <string name="v2raytun_start_sent">Команда запуска отправлена в v2RayTun</string>
+    <string name="v2raytun_stop_sent">Команда остановки отправлена в v2RayTun</string>
+    <string name="v2raytun_restart_sent">Команда рестарта отправлена в v2RayTun</string>
+    <string name="v2raytun_control_missing">v2RayTun не найден или не поддерживает этот deeplink</string>
 
     <string-array name="auto_check_intervals_labels">
         <item>15 минут</item>
@@ -71,11 +88,5 @@
         <item>30</item>
         <item>60</item>
         <item>180</item>
-    </string-array>
-
-    <string-array name="source_labels">
-        <item>Локальный список</item>
-        <item>WhitePrime: available_st(top100)</item>
-        <item>WhitePrime: white-list_available_st(top100)</item>
     </string-array>
 </resources>

@@ -1,9 +1,11 @@
 package com.example.vlesschecker
 
+import org.json.JSONObject
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.URI
 import java.net.URLDecoder
+import java.util.Base64
 import javax.net.ssl.SNIHostName
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocket
@@ -94,13 +96,13 @@ object VlessChecker {
                 checkType = "Не распознано",
                 latencyMs = null,
                 isWorking = false,
-                statusText = "Пропущено: некорректная строка"
+                statusText = "Пропущено: неподдерживаемая или некорректная строка"
             )
 
         return checkParsed(rawLink, parsed)
     }
 
-    private fun checkParsed(rawLink: String, parsed: ParsedVless): LinkCheckResult {
+    private fun checkParsed(rawLink: String, parsed: ParsedEndpoint): LinkCheckResult {
         val measured = when (parsed.security.lowercase()) {
             "tls" -> testTls(parsed.host, parsed.port, parsed.sni)
             "reality" -> testTcp(parsed.host, parsed.port)
@@ -108,9 +110,9 @@ object VlessChecker {
         }
 
         val checkType = when (parsed.security.lowercase()) {
-            "tls" -> "TCP + TLS handshake"
-            "reality" -> "TCP connect (Reality приблизительно)"
-            else -> "TCP connect"
+            "tls" -> "${parsed.scheme.uppercase()} · TCP + TLS handshake"
+            "reality" -> "${parsed.scheme.uppercase()} · TCP connect (Reality приблизительно)"
+            else -> "${parsed.scheme.uppercase()} · TCP connect"
         }
 
         return if (measured != null) {
@@ -136,23 +138,68 @@ object VlessChecker {
         }
     }
 
-    private fun parse(rawLink: String): ParsedVless? {
+    private fun parse(rawLink: String): ParsedEndpoint? {
+        val clean = rawLink.trim().substringBefore('#')
+        val scheme = clean.substringBefore("://", missingDelimiterValue = "").lowercase()
+        return when (scheme) {
+            "vless", "trojan" -> parseStandardUri(clean, scheme)
+            "vmess" -> parseVmess(clean)
+            else -> null
+        }
+    }
+
+    private fun parseStandardUri(cleanLink: String, scheme: String): ParsedEndpoint? {
         return try {
-            val clean = rawLink.trim().substringBefore('#')
-            val uri = URI(clean)
-            if (uri.scheme?.lowercase() != "vless") return null
+            val uri = URI(cleanLink)
             val host = uri.host ?: return null
             val port = if (uri.port > 0) uri.port else return null
             val params = parseQuery(uri.rawQuery)
-            ParsedVless(
+            val security = when {
+                scheme == "trojan" && params["security"].isNullOrBlank() -> "tls"
+                else -> params["security"].orEmpty()
+            }
+            ParsedEndpoint(
+                scheme = scheme,
                 host = host,
                 port = port,
-                security = params["security"].orEmpty(),
+                security = security,
                 sni = params["sni"]
             )
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun parseVmess(cleanLink: String): ParsedEndpoint? {
+        return try {
+            val encoded = cleanLink.removePrefix("vmess://")
+            val jsonText = decodeBase64ToString(encoded)
+            val json = JSONObject(jsonText)
+            val host = json.optString("add").ifBlank { return null }
+            val port = json.optString("port").toIntOrNull() ?: return null
+            val tlsValue = json.optString("tls")
+            val sniValue = json.optString("sni").ifBlank { json.optString("host") }
+            ParsedEndpoint(
+                scheme = "vmess",
+                host = host,
+                port = port,
+                security = if (tlsValue.equals("tls", ignoreCase = true)) "tls" else "none",
+                sni = sniValue.ifBlank { null }
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun decodeBase64ToString(value: String): String {
+        val normalized = value.trim()
+            .replace('-', '+')
+            .replace('_', '/')
+            .let { raw ->
+                val padding = (4 - raw.length % 4) % 4
+                raw + "=".repeat(padding)
+            }
+        return String(Base64.getDecoder().decode(normalized), Charsets.UTF_8)
     }
 
     private fun parseQuery(rawQuery: String?): Map<String, String> {
@@ -208,7 +255,8 @@ object VlessChecker {
         return ((System.nanoTime() - startNs) / 1_000_000L).coerceAtLeast(1L)
     }
 
-    private data class ParsedVless(
+    private data class ParsedEndpoint(
+        val scheme: String,
         val host: String,
         val port: Int,
         val security: String,

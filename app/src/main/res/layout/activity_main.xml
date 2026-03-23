@@ -24,7 +24,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Проверка VLESS-ссылок из локального списка или удалённых WhitePrime-списков: поиск самой быстрой рабочей ссылки, полная проверка всех ссылок с временем отклика, импорт файла и фоновая автопроверка."
+            android:text="Проверка и сравнение ссылок из локального файла или из удалённых списков XRayCheck: поиск самой быстрой рабочей ссылки, полная проверка с временем отклика, импорт файла и фоновая автопроверка."
             android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
 
         <com.google.android.material.textview.MaterialTextView
@@ -32,7 +32,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Проверка легковесная: tcp/none — TCP connect, tls — TCP + TLS handshake, reality — только TCP connect. Время отклика — это время подключения/handshake, а не полноценный тест Xray/VLESS-сеанса. Передача выбранной ссылки в системный VPN не встроена: приложение может передать ссылку в совместимый VPN-клиент и открыть настройки VPN Android."
+            android:text="Проверка легковесная: tcp/none — TCP connect, tls — TCP + TLS handshake, reality — только TCP connect. По нажатию на проверенный конфиг он копируется в буфер в виде одной чистой ссылки, удобной для вставки в v2RayTun. Долгое нажатие — попытка открыть конфиг в совместимом VPN-клиенте."
             android:textAppearance="@style/TextAppearance.Material3.BodySmall" />
 
         <com.google.android.material.textview.MaterialTextView
@@ -48,20 +48,13 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp" />
 
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/sourceInfoText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textAppearance="@style/TextAppearance.Material3.BodySmall" />
-
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/refreshRemoteButton"
+            android:id="@+id/refreshSourceButton"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Обновить выбранный удалённый список" />
+            android:text="Подтянуть выбранный список" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/importButton"
@@ -121,14 +114,14 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="После полной проверки удалить нерабочие ссылки из списка" />
+            android:text="После полной проверки удалить нерабочие ссылки из текущего списка на экране" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/checkFirstButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Проверить и скопировать самую быструю из выбранного списка" />
+            android:text="Проверить и скопировать самую быструю" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/checkAllButton"
@@ -139,28 +132,56 @@
             android:text="Проверить все и показать отклик" />
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/handoffButton"
-            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:id="@+id/importFastestVpnButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Передать последнюю выбранную ссылку в VPN-клиент" />
+            android:enabled="false"
+            android:text="Импортировать fastest в VPN-клиент" />
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/vpnSettingsButton"
+            android:id="@+id/openVpnSettingsButton"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Открыть настройки VPN Android" />
+            android:text="Открыть системные настройки VPN" />
 
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/lastFastestText"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:textAppearance="@style/TextAppearance.Material3.BodySmall"
-            android:textIsSelectable="true" />
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/startVpnButton"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Старт v2RayTun" />
+
+            <Space
+                android:layout_width="8dp"
+                android:layout_height="wrap_content" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/stopVpnButton"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Стоп v2RayTun" />
+
+        </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/restartVpnButton"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Рестарт v2RayTun" />
 
         <ProgressBar
             android:id="@+id/progressBar"
@@ -184,6 +205,32 @@
             android:layout_marginTop="12dp"
             android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
             android:textIsSelectable="true" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/checkedResultsTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="Проверенные конфиги"
+            android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+            android:visibility="gone" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/checkedResultsHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="Короткое нажатие — копировать конфиг для вставки в v2RayTun. Долгое нажатие — попытаться открыть в VPN-клиенте."
+            android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/checkedResultsContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="vertical"
+            android:visibility="gone" />
 
     </LinearLayout>
 </ScrollView>
