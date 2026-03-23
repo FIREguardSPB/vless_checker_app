@@ -17,7 +17,8 @@ object VpnImportHelper {
     }
 
     fun prepareClipboardConfig(link: String): String {
-        return VlessChecker.extractSupportedLink(link)
+        return VlessChecker.canonicalizeSupportedLink(link)
+            ?: VlessChecker.extractSupportedLink(link)
             ?: VlessChecker.normalizeLine(link)
     }
 

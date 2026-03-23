@@ -29,6 +29,7 @@ object RemoteListRepository {
         return when (source) {
             ListSource.MANUAL -> {
                 val text = AppPrefs.getServerList(context)
+                ConfigFileStore.saveCurrentSnapshot(context, source, text)
                 SourceTextResult(
                     source = source,
                     rawText = text,
@@ -66,6 +67,7 @@ object RemoteListRepository {
                 throw IOException("Список пуст")
             }
             AppPrefs.setRemoteCache(context, source, freshText)
+            ConfigFileStore.saveCurrentSnapshot(context, source, freshText)
             SourceTextResult(
                 source = source,
                 rawText = freshText,
@@ -75,6 +77,7 @@ object RemoteListRepository {
             )
         } catch (e: Exception) {
             if (cached.isNotBlank()) {
+                ConfigFileStore.saveCurrentSnapshot(context, source, cached)
                 SourceTextResult(
                     source = source,
                     rawText = cached,

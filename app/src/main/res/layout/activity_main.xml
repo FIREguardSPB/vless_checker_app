@@ -24,7 +24,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Проверка и сравнение ссылок из локального файла или из удалённых списков XRayCheck: поиск самой быстрой рабочей ссылки, полная проверка с временем отклика, импорт файла и фоновая автопроверка."
+            android:text="Проверка и сравнение конфигов из локального файла или из удалённых списков XRayCheck: поиск самой быстрой рабочей ссылки, полная проверка, сохранение списков в txt и фоновая автопроверка."
             android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
 
         <com.google.android.material.textview.MaterialTextView
@@ -32,7 +32,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Проверка легковесная: tcp/none — TCP connect, tls — TCP + TLS handshake, reality — только TCP connect. По нажатию на плашку результат копируется в буфер в очищенном валидном формате для вставки в v2RayTun. Долгое нажатие — попытка открыть конфиг в совместимом VPN-клиенте."
+            android:text="Проверка стала строже: рабочими считаются только конфиги, которые прошли протокольную end-to-end проверку через прокси. Для этой версии строго проверяются только VLESS/Trojan с transport=tcp/raw и security=tls/none. REALITY, VMESS и нетиповые транспорты помечаются как неподтверждённые и в плашки не попадают."
             android:textAppearance="@style/TextAppearance.Material3.BodySmall" />
 
         <com.google.android.material.textview.MaterialTextView
@@ -62,6 +62,34 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:text="Импортировать локальный список из файла" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/shareCurrentListFileButton"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Передать файл списка" />
+
+            <Space
+                android:layout_width="8dp"
+                android:layout_height="wrap_content" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/shareWorkingListFileButton"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Передать файл рабочих" />
+
+        </LinearLayout>
 
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
@@ -114,7 +142,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="После полной проверки удалить нерабочие ссылки из текущего списка на экране" />
+            android:text="После полной проверки удалить нерабочие ссылки из текущего списка и из сохранённого файла" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/checkFirstButton"
@@ -129,7 +157,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Проверить все и показать отклик" />
+            android:text="Проверить все и показать только рабочие" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/importFastestVpnButton"

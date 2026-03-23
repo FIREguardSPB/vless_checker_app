@@ -1,14 +1,21 @@
 package com.example.vlesschecker
 
 import org.json.JSONObject
+import java.io.InputStream
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.URI
 import java.net.URLDecoder
+import java.nio.ByteBuffer
+import java.security.MessageDigest
 import java.util.Base64
+import java.util.UUID
 import javax.net.ssl.SNIHostName
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocket
+
+private const val PROBE_HOST = "example.com"
+private const val PROBE_PORT = 80
 
 data class CheckResult(
     val link: String,
@@ -82,22 +89,22 @@ object VlessChecker {
 
     fun normalizeLines(rawText: String): List<String> {
         return rawText.lineSequence()
-            .map { normalizeLine(it) }
-            .filter { it.isNotEmpty() }
+            .mapNotNull { canonicalizeSupportedLink(it) }
             .toList()
     }
 
     fun normalizeLine(rawLine: String): String {
         return rawLine
-            .replace("\uFEFF", "")
-            .replace("\u200B", "")
-            .replace("\u200C", "")
-            .replace("\u200D", "")
-            .replace("\u2060", "")
-            .replace("\u00A0", " ")
-            .replace("\r", "")
+            .replace("﻿", "")
+            .replace("​", "")
+            .replace("‌", "")
+            .replace("‍", "")
+            .replace("⁠", "")
+            .replace(" ", " ")
+            .replace("
+", "")
             .trim()
-            .trim('"', '\'', '`')
+            .trim('"', ''', '`')
     }
 
     fun extractSupportedLink(rawText: String): String? {
@@ -115,8 +122,19 @@ object VlessChecker {
         return normalized.substring(startIndex).trim()
     }
 
+    fun canonicalizeSupportedLink(rawText: String): String? {
+        val extracted = extractSupportedLink(rawText) ?: return null
+        val clean = extracted.substringBefore('#').trim()
+        val scheme = clean.substringBefore("://", missingDelimiterValue = "").lowercase()
+        return when (scheme) {
+            "vmess" -> canonicalizeVmess(clean)
+            "vless", "trojan" -> clean
+            else -> null
+        }
+    }
+
     private fun checkSingleDetailed(rawLink: String): LinkCheckResult {
-        val sanitizedLink = extractSupportedLink(rawLink) ?: normalizeLine(rawLink)
+        val sanitizedLink = canonicalizeSupportedLink(rawLink) ?: normalizeLine(rawLink)
         val parsed = parse(sanitizedLink)
             ?: return LinkCheckResult(
                 link = sanitizedLink,
@@ -132,16 +150,29 @@ object VlessChecker {
     }
 
     private fun checkParsed(rawLink: String, parsed: ParsedEndpoint): LinkCheckResult {
-        val measured = when (parsed.security.lowercase()) {
-            "tls" -> testTls(parsed.host, parsed.port, parsed.sni)
-            "reality" -> testTcp(parsed.host, parsed.port)
-            else -> testTcp(parsed.host, parsed.port)
+        val unsupportedReason = strictUnsupportedReason(parsed)
+        if (unsupportedReason != null) {
+            return LinkCheckResult(
+                link = rawLink,
+                host = parsed.host,
+                port = parsed.port,
+                checkType = "${parsed.scheme.uppercase()} · строгая проверка",
+                latencyMs = null,
+                isWorking = false,
+                statusText = unsupportedReason
+            )
         }
 
-        val checkType = when (parsed.security.lowercase()) {
-            "tls" -> "${parsed.scheme.uppercase()} · TCP + TLS handshake"
-            "reality" -> "${parsed.scheme.uppercase()} · TCP connect (Reality приблизительно)"
-            else -> "${parsed.scheme.uppercase()} · TCP connect"
+        val measured = when (parsed.scheme) {
+            "vless" -> testVless(parsed)
+            "trojan" -> testTrojan(parsed)
+            else -> null
+        }
+
+        val checkType = when (parsed.scheme) {
+            "vless" -> "VLESS · строгая TCP/TLS проверка через прокси"
+            "trojan" -> "TROJAN · строгая TCP/TLS проверка через прокси"
+            else -> "${parsed.scheme.uppercase()} · строгая проверка"
         }
 
         return if (measured != null) {
@@ -162,9 +193,23 @@ object VlessChecker {
                 checkType = checkType,
                 latencyMs = null,
                 isWorking = false,
-                statusText = "Недоступно"
+                statusText = "Недоступно или не прошло строгую проверку"
             )
         }
+    }
+
+    private fun strictUnsupportedReason(parsed: ParsedEndpoint): String? {
+        val transport = parsed.transport.lowercase()
+        if (parsed.security.equals("reality", ignoreCase = true)) {
+            return "Пропущено: REALITY не проходит строгую проверку без Xray-core"
+        }
+        if (parsed.scheme == "vmess") {
+            return "Пропущено: VMESS не проходит строгую проверку в этой версии"
+        }
+        if (transport !in setOf("", "tcp", "raw")) {
+            return "Пропущено: transport=${transport} пока не проверяется строго"
+        }
+        return null
     }
 
     private fun parse(rawLink: String): ParsedEndpoint? {
@@ -185,14 +230,24 @@ object VlessChecker {
             val params = parseQuery(uri.rawQuery)
             val security = when {
                 scheme == "trojan" && params["security"].isNullOrBlank() -> "tls"
-                else -> params["security"].orEmpty()
+                else -> params["security"].orEmpty().ifBlank { "none" }
             }
             ParsedEndpoint(
                 scheme = scheme,
                 host = host,
                 port = port,
                 security = security,
-                sni = params["sni"]
+                sni = params["sni"],
+                transport = params["type"].orEmpty().ifBlank { "tcp" },
+                path = params["path"],
+                hostHeader = params["host"],
+                alpn = params["alpn"]
+                    ?.split(',')
+                    ?.map { it.trim() }
+                    ?.filter { it.isNotEmpty() }
+                    .orEmpty(),
+                user = uri.userInfo,
+                vmessJson = null
             )
         } catch (_: Exception) {
             null
@@ -206,15 +261,40 @@ object VlessChecker {
             val json = JSONObject(jsonText)
             val host = json.optString("add").ifBlank { return null }
             val port = json.optString("port").toIntOrNull() ?: return null
-            val tlsValue = json.optString("tls")
-            val sniValue = json.optString("sni").ifBlank { json.optString("host") }
+            val security = when {
+                json.optString("security").equals("tls", ignoreCase = true) -> "tls"
+                json.optString("tls").equals("tls", ignoreCase = true) -> "tls"
+                else -> "none"
+            }
             ParsedEndpoint(
                 scheme = "vmess",
                 host = host,
                 port = port,
-                security = if (tlsValue.equals("tls", ignoreCase = true)) "tls" else "none",
-                sni = sniValue.ifBlank { null }
+                security = security,
+                sni = json.optString("sni").ifBlank { json.optString("host") }.ifBlank { null },
+                transport = json.optString("net").ifBlank { "tcp" },
+                path = json.optString("path").ifBlank { null },
+                hostHeader = json.optString("host").ifBlank { null },
+                alpn = json.optString("alpn")
+                    .split(',')
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() },
+                user = json.optString("id").ifBlank { null },
+                vmessJson = json
             )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun canonicalizeVmess(cleanLink: String): String? {
+        return try {
+            val encoded = cleanLink.removePrefix("vmess://")
+            val jsonText = decodeBase64ToString(encoded)
+            val minified = JSONObject(jsonText).toString()
+            val reencoded = Base64.getEncoder().withoutPadding()
+                .encodeToString(minified.toByteArray(Charsets.UTF_8))
+            "vmess://$reencoded"
         } catch (_: Exception) {
             null
         }
@@ -247,11 +327,22 @@ object VlessChecker {
             .toMap()
     }
 
-    private fun testTcp(host: String, port: Int, timeoutMs: Int = 2500): Long? {
+    private fun testVless(parsed: ParsedEndpoint, timeoutMs: Int = 4500): Long? {
+        val user = parsed.user ?: return null
+        val uuid = runCatching { UUID.fromString(user) }.getOrNull() ?: return null
         val startNs = System.nanoTime()
         return try {
-            Socket().use { socket ->
-                socket.connect(InetSocketAddress(host, port), timeoutMs)
+            openServerSocket(parsed, timeoutMs).use { socket ->
+                val out = socket.getOutputStream()
+                val input = socket.getInputStream()
+                out.write(buildVlessRequest(uuid, PROBE_HOST, PROBE_PORT))
+                out.flush()
+                val version = input.read()
+                if (version < 0) return null
+                val addonsLength = input.read()
+                if (addonsLength < 0) return null
+                skipFully(input, addonsLength)
+                if (!probeHttp(input, out)) return null
                 elapsedMs(startNs)
             }
         } catch (_: Exception) {
@@ -259,24 +350,126 @@ object VlessChecker {
         }
     }
 
-    private fun testTls(host: String, port: Int, sni: String?, timeoutMs: Int = 3500): Long? {
+    private fun testTrojan(parsed: ParsedEndpoint, timeoutMs: Int = 4500): Long? {
+        val password = parsed.user ?: return null
         val startNs = System.nanoTime()
         return try {
-            val sslContext = SSLContext.getInstance("TLS")
-            sslContext.init(null, null, null)
-            val factory = sslContext.socketFactory
-            (factory.createSocket() as SSLSocket).use { socket ->
-                socket.soTimeout = timeoutMs
-                socket.connect(InetSocketAddress(host, port), timeoutMs)
-                val params = socket.sslParameters
-                val serverName = sni ?: host
-                params.serverNames = listOf(SNIHostName(serverName))
-                socket.sslParameters = params
-                socket.startHandshake()
+            openServerSocket(parsed, timeoutMs).use { socket ->
+                val out = socket.getOutputStream()
+                val input = socket.getInputStream()
+                out.write(buildTrojanRequest(password, PROBE_HOST, PROBE_PORT))
+                out.flush()
+                if (!probeHttp(input, out)) return null
                 elapsedMs(startNs)
             }
         } catch (_: Exception) {
             null
+        }
+    }
+
+    private fun probeHttp(input: InputStream, out: java.io.OutputStream): Boolean {
+        val request = (
+            "GET / HTTP/1.1\r\n" +
+                "Host: $PROBE_HOST\r\n" +
+                "Connection: close\r\n" +
+                "User-Agent: VlessChecker/1.6\r\n\r\n"
+            ).toByteArray(Charsets.UTF_8)
+        out.write(request)
+        out.flush()
+        return looksLikeHttpResponse(input)
+    }
+
+    private fun looksLikeHttpResponse(input: InputStream): Boolean {
+        val buffer = ByteArray(12)
+        var total = 0
+        while (total < buffer.size) {
+            val read = input.read(buffer, total, buffer.size - total)
+            if (read <= 0) break
+            total += read
+            val text = String(buffer, 0, total, Charsets.ISO_8859_1)
+            if (text.startsWith("HTTP/")) return true
+        }
+        return false
+    }
+
+    private fun buildVlessRequest(uuid: UUID, host: String, port: Int): ByteArray {
+        val addressBytes = host.toByteArray(Charsets.UTF_8)
+        val uuidBytes = ByteBuffer.allocate(16)
+            .putLong(uuid.mostSignificantBits)
+            .putLong(uuid.leastSignificantBits)
+            .array()
+        return ByteBuffer.allocate(1 + 16 + 1 + 1 + 2 + 1 + 1 + addressBytes.size)
+            .put(0x00)
+            .put(uuidBytes)
+            .put(0x00)
+            .put(0x01)
+            .putShort(port.toShort())
+            .put(0x02)
+            .put(addressBytes.size.toByte())
+            .put(addressBytes)
+            .array()
+    }
+
+    private fun buildTrojanRequest(password: String, host: String, port: Int): ByteArray {
+        val passwordHash = sha224Hex(password)
+        val addressBytes = host.toByteArray(Charsets.UTF_8)
+        return ByteBuffer.allocate(56 + 2 + 1 + 1 + 1 + addressBytes.size + 2 + 2)
+            .put(passwordHash.toByteArray(Charsets.US_ASCII))
+            .put(CRLF)
+            .put(0x01)
+            .put(0x03)
+            .put(addressBytes.size.toByte())
+            .put(addressBytes)
+            .putShort(port.toShort())
+            .put(CRLF)
+            .array()
+    }
+
+    private fun sha224Hex(value: String): String {
+        val digest = MessageDigest.getInstance("SHA-224").digest(value.toByteArray(Charsets.UTF_8))
+        return buildString(digest.size * 2) {
+            digest.forEach { byte ->
+                append(((byte.toInt() ushr 4) and 0x0F).toString(16))
+                append((byte.toInt() and 0x0F).toString(16))
+            }
+        }
+    }
+
+    private fun openServerSocket(parsed: ParsedEndpoint, timeoutMs: Int): Socket {
+        val base = Socket().apply {
+            soTimeout = timeoutMs
+            connect(InetSocketAddress(parsed.host, parsed.port), timeoutMs)
+        }
+        return if (parsed.security.equals("tls", ignoreCase = true)) {
+            wrapTls(base, parsed, timeoutMs)
+        } else {
+            base
+        }
+    }
+
+    private fun wrapTls(base: Socket, parsed: ParsedEndpoint, timeoutMs: Int): SSLSocket {
+        val sslContext = SSLContext.getInstance("TLS")
+        sslContext.init(null, null, null)
+        val socket = sslContext.socketFactory.createSocket(base, parsed.host, parsed.port, true) as SSLSocket
+        socket.soTimeout = timeoutMs
+        val params = socket.sslParameters
+        val serverName = parsed.sni ?: parsed.hostHeader ?: parsed.host
+        params.serverNames = listOf(SNIHostName(serverName))
+        if (parsed.alpn.isNotEmpty()) {
+            runCatching { params.applicationProtocols = parsed.alpn.toTypedArray() }
+        }
+        socket.sslParameters = params
+        socket.startHandshake()
+        return socket
+    }
+
+    private fun skipFully(input: InputStream, count: Int) {
+        var remaining = count
+        val buffer = ByteArray(256)
+        while (remaining > 0) {
+            val read = input.read(buffer, 0, minOf(buffer.size, remaining))
+            if (read <= 0) break
+            remaining -= read
         }
     }
 
@@ -289,6 +482,14 @@ object VlessChecker {
         val host: String,
         val port: Int,
         val security: String,
-        val sni: String?
+        val sni: String?,
+        val transport: String,
+        val path: String?,
+        val hostHeader: String?,
+        val alpn: List<String>,
+        val user: String?,
+        val vmessJson: JSONObject?
     )
+
+    private val CRLF = byteArrayOf(0x0D, 0x0A)
 }

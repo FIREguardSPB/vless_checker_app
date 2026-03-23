@@ -77,7 +77,9 @@ class MainActivity : AppCompatActivity() {
 
         binding.linksEditText.doAfterTextChanged {
             if (currentSelectedSource() == ListSource.MANUAL) {
-                AppPrefs.setServerList(this, it?.toString().orEmpty())
+                val value = it?.toString().orEmpty()
+                AppPrefs.setServerList(this, value)
+                ConfigFileStore.saveCurrentSnapshot(this, ListSource.MANUAL, value)
             }
         }
 
@@ -101,6 +103,14 @@ class MainActivity : AppCompatActivity() {
 
         binding.importButton.setOnClickListener {
             importFileLauncher.launch(arrayOf("*/*"))
+        }
+
+        binding.shareCurrentListFileButton.setOnClickListener {
+            shareCurrentListFile()
+        }
+
+        binding.shareWorkingListFileButton.setOnClickListener {
+            shareWorkingListFile()
         }
 
         binding.checkFirstButton.setOnClickListener {
@@ -173,6 +183,7 @@ class MainActivity : AppCompatActivity() {
         if (AppPrefs.getServerList(this).isBlank()) {
             AppPrefs.setServerList(this, manualText)
         }
+        ConfigFileStore.saveCurrentSnapshot(this, ListSource.MANUAL, manualText)
 
         binding.deleteDeadSwitch.isChecked = AppPrefs.isDeleteDeadOnFullScan(this)
         binding.autoCheckSwitch.isChecked = AppPrefs.isAutoCheckEnabled(this)
@@ -272,6 +283,7 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
                 updateLinksEditorText(result.rawText)
+                ConfigFileStore.saveCurrentSnapshot(this@MainActivity, source, result.rawText)
                 binding.statusText.text = getString(
                     R.string.remote_source_loaded_status,
                     result.sourceLabel,
@@ -336,7 +348,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                renderCheckedResults(batch.checked)
+                renderCheckedResults(batch.checked.filter { it.isWorking })
 
                 val fastest = batch.working.firstOrNull()
                 if (fastest == null) {
@@ -428,9 +440,11 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
-                renderCheckedResults(batch.checked)
+                val workingDetailed = batch.checked.filter { it.isWorking }
+                renderCheckedResults(workingDetailed)
 
                 val workingLinks = batch.working.map { it.link }
+                ConfigFileStore.saveWorkingSnapshot(this@MainActivity, currentSelectedSource(), workingLinks)
                 val fastest = batch.working.firstOrNull()
                 if (fastest != null) {
                     onFastestChosen(fastest)
@@ -502,6 +516,7 @@ class MainActivity : AppCompatActivity() {
         return if (source == ListSource.MANUAL) {
             val manualText = binding.linksEditText.text?.toString().orEmpty()
             AppPrefs.setServerList(this, manualText)
+            ConfigFileStore.saveCurrentSnapshot(this, source, manualText)
             SourceTextResult(
                 source = source,
                 rawText = manualText,
@@ -518,6 +533,7 @@ class MainActivity : AppCompatActivity() {
                 )
             }
             updateLinksEditorText(result.rawText)
+            ConfigFileStore.saveCurrentSnapshot(this@MainActivity, source, result.rawText)
             result
         }
     }
@@ -565,13 +581,18 @@ class MainActivity : AppCompatActivity() {
                 appendLine(getString(R.string.source_warning, sourceResult.warningMessage))
             }
             appendLine(getString(R.string.source_lines_count, sourceResult.links.size))
+            val snapshotFile = ConfigFileStore.getCurrentSnapshotFile(this@MainActivity, sourceResult.source)
+            if (snapshotFile.exists()) {
+                appendLine(getString(R.string.saved_file_label, snapshotFile.absolutePath))
+            }
             appendLine()
         }
     }
 
     private fun renderCheckedResults(items: List<LinkCheckResult>) {
+        val visibleItems = items.filter { it.isWorking }
         binding.checkedResultsContainer.removeAllViews()
-        val visible = items.isNotEmpty()
+        val visible = visibleItems.isNotEmpty()
         binding.checkedResultsTitle.visibility = if (visible) View.VISIBLE else View.GONE
         binding.checkedResultsHint.visibility = if (visible) View.VISIBLE else View.GONE
         binding.checkedResultsContainer.visibility = if (visible) View.VISIBLE else View.GONE
@@ -579,7 +600,7 @@ class MainActivity : AppCompatActivity() {
             binding.checkedResultsTitle.text = getString(R.string.checked_results_title)
         }
 
-        items.forEachIndexed { index, item ->
+        visibleItems.forEachIndexed { index, item ->
             val row = ItemCheckedResultBinding.inflate(layoutInflater, binding.checkedResultsContainer, false)
             row.indexText.text = getString(R.string.checked_item_title, index + 1)
             row.statusText.text = buildRowStatus(item)
@@ -650,6 +671,7 @@ class MainActivity : AppCompatActivity() {
         binding.sourceSpinner.setSelection(sourceItems.indexOf(ListSource.MANUAL))
         updateLinksEditorText(text)
         AppPrefs.setServerList(this, text)
+        ConfigFileStore.saveCurrentSnapshot(this, ListSource.MANUAL, text)
         renderCheckedResults(emptyList())
         binding.statusText.text = getString(R.string.import_success)
         binding.resultText.text = buildString {
@@ -657,6 +679,32 @@ class MainActivity : AppCompatActivity() {
             appendLine(getString(R.string.import_switched_to_manual))
         }
         Toast.makeText(this, R.string.import_success, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun shareCurrentListFile() {
+        val source = currentSelectedSource()
+        if (source == ListSource.MANUAL) {
+            val currentText = binding.linksEditText.text?.toString().orEmpty()
+            AppPrefs.setServerList(this, currentText)
+            ConfigFileStore.saveCurrentSnapshot(this, source, currentText)
+        }
+        val ok = ConfigFileStore.shareCurrentSnapshot(this, source)
+        val messageRes = if (ok) {
+            R.string.share_current_file_success
+        } else {
+            R.string.share_current_file_missing
+        }
+        Toast.makeText(this, messageRes, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun shareWorkingListFile() {
+        val ok = ConfigFileStore.shareWorkingSnapshot(this, currentSelectedSource())
+        val messageRes = if (ok) {
+            R.string.share_working_file_success
+        } else {
+            R.string.share_working_file_missing
+        }
+        Toast.makeText(this, messageRes, Toast.LENGTH_SHORT).show()
     }
 
     private fun importFastestIntoVpnClient() {
@@ -718,6 +766,8 @@ class MainActivity : AppCompatActivity() {
         binding.checkFirstButton.isEnabled = !isBusy
         binding.checkAllButton.isEnabled = !isBusy
         binding.importButton.isEnabled = !isBusy
+        binding.shareCurrentListFileButton.isEnabled = !isBusy
+        binding.shareWorkingListFileButton.isEnabled = !isBusy
         binding.refreshSourceButton.isEnabled = !isBusy
         binding.sourceSpinner.isEnabled = !isBusy
         binding.intervalSpinner.isEnabled = !isBusy
