@@ -314,7 +314,15 @@ object VlessChecker {
 
     private fun isValidRealityPublicKey(value: String?): Boolean {
         if (value.isNullOrBlank()) return false
-        return value.matches(Regex("^[A-Za-z0-9_-]{20,120}$"))
+        // Проверка формата base64url (без паддинга)
+        if (!value.matches(Regex("^[A-Za-z0-9_-]{20,120}$"))) return false
+        // Попытка декодировать для уверенности, что это корректный base64
+        return try {
+            Base64.getUrlDecoder().decode(value)
+            true
+        } catch (_: IllegalArgumentException) {
+            false
+        }
     }
 
     private fun isValidRealityFingerprint(value: String?): Boolean {
@@ -328,6 +336,17 @@ object VlessChecker {
         if (value.isNullOrBlank()) return false
         if (value.contains(" ")) return false
         if (!value.contains('.')) return false
+        // Отсеиваем IP-адреса
+        if (value.matches(Regex("^\\d+\\.\\d+\\.\\d+\\.\\d+$"))) return false
+        // Отсеиваем очевидный мусор и тестовые домены
+        val lower = value.lowercase()
+        if (lower.startsWith("localhost") || lower.contains("example") || 
+            lower.contains("test") || lower.contains("dummy") || 
+            lower.contains("fake") || lower.contains("invalid")) {
+            return false
+        }
+        // Домен должен иметь хотя бы одну букву (не только цифры и точки)
+        if (!value.any { it.isLetter() }) return false
         return true
     }
 
@@ -515,22 +534,30 @@ object VlessChecker {
     private fun testEndpointReachability(parsed: ParsedEndpoint, timeoutMs: Int = 3500): Long? {
         val startNs = System.nanoTime()
         return try {
-            when {
+            val socket = when {
                 parsed.security.equals("tls", ignoreCase = true) -> {
-                    Socket().use { base ->
-                        base.soTimeout = timeoutMs
-                        base.connect(InetSocketAddress(parsed.host, parsed.port), timeoutMs)
-                        wrapTls(base, parsed, timeoutMs).use { }
-                    }
+                    Socket().apply {
+                        soTimeout = timeoutMs
+                        connect(InetSocketAddress(parsed.host, parsed.port), timeoutMs)
+                    }.let { wrapTls(it, parsed, timeoutMs) }
                 }
-                else -> {
-                    Socket().use { socket ->
-                        socket.soTimeout = timeoutMs
-                        socket.connect(InetSocketAddress(parsed.host, parsed.port), timeoutMs)
-                    }
+                else -> Socket().apply {
+                    soTimeout = timeoutMs
+                    connect(InetSocketAddress(parsed.host, parsed.port), timeoutMs)
                 }
             }
-            elapsedMs(startNs)
+            socket.use { sock ->
+                // Проверяем, что сервер не закрывает соединение сразу после подключения
+                sock.soTimeout = 200  // маленький таймаут на чтение
+                try {
+                    val read = sock.getInputStream().read()
+                    if (read == -1) return null  // сервер сразу закрыл соединение
+                } catch (_: java.net.SocketTimeoutException) {
+                    // Таймаут на чтении — это хорошо, сервер ждёт данные
+                }
+                // Соединение стабильно
+                elapsedMs(startNs)
+            }
         } catch (_: Exception) {
             null
         }
