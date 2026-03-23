@@ -66,7 +66,7 @@ object ConfigFileStore {
     private fun shareFile(context: Context, file: File, subject: String): Boolean {
         val uri = FileProvider.getUriForFile(
             context,
-            BuildConfig.APPLICATION_ID + ".fileprovider",
+            context.packageName + ".fileprovider",
             file
         )
         val intent = Intent(Intent.ACTION_SEND).apply {
