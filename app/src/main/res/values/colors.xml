@@ -1,0 +1,13 @@
+<resources>
+    <color name="checked_confirmed_bg">#123C26</color>
+    <color name="checked_confirmed_stroke">#2E8B57</color>
+    <color name="checked_confirmed_text">#CFF7DA</color>
+
+    <color name="checked_candidate_bg">#4A3B0C</color>
+    <color name="checked_candidate_stroke">#D4A017</color>
+    <color name="checked_candidate_text">#FFF1B8</color>
+
+    <color name="checked_default_bg">#1E1E1E</color>
+    <color name="checked_default_stroke">#555555</color>
+    <color name="checked_default_text">#FFFFFF</color>
+</resources>

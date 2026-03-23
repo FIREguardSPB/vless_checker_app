@@ -14,15 +14,47 @@ import javax.net.ssl.SNIHostName
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLSocket
 
-private const val PROBE_HOST = "example.com"
-private const val PROBE_PORT = 80
+private data class ProbeTarget(
+    val host: String,
+    val port: Int,
+    val request: ByteArray
+)
+
+private val PROBE_TARGETS = listOf(
+    ProbeTarget(
+        host = "example.com",
+        port = 80,
+        request = (
+            "GET / HTTP/1.1\r\n" +
+                "Host: example.com\r\n" +
+                "Connection: close\r\n" +
+                "User-Agent: VlessChecker/1.8\r\n\r\n"
+            ).toByteArray(Charsets.UTF_8)
+    ),
+    ProbeTarget(
+        host = "connectivitycheck.gstatic.com",
+        port = 80,
+        request = (
+            "GET /generate_204 HTTP/1.1\r\n" +
+                "Host: connectivitycheck.gstatic.com\r\n" +
+                "Connection: close\r\n" +
+                "User-Agent: VlessChecker/1.8\r\n\r\n"
+            ).toByteArray(Charsets.UTF_8)
+    )
+)
+
+enum class CheckConfidence(val rank: Int) {
+    CONFIRMED(0),
+    CANDIDATE(1)
+}
 
 data class CheckResult(
     val link: String,
     val host: String,
     val port: Int,
     val checkType: String,
-    val latencyMs: Long
+    val latencyMs: Long,
+    val confidence: CheckConfidence
 )
 
 data class LinkCheckResult(
@@ -32,12 +64,15 @@ data class LinkCheckResult(
     val checkType: String,
     val latencyMs: Long?,
     val isWorking: Boolean,
-    val statusText: String
+    val statusText: String,
+    val confidence: CheckConfidence? = null
 )
 
 data class BatchCheckResult(
     val checked: List<LinkCheckResult>,
     val working: List<CheckResult>,
+    val confirmed: List<CheckResult>,
+    val candidates: List<CheckResult>,
     val failed: List<LinkCheckResult>,
     val skipped: List<LinkCheckResult>
 )
@@ -48,7 +83,7 @@ object VlessChecker {
         links: List<String>,
         progress: (checked: Int, total: Int, current: String) -> Unit = { _, _, _ -> }
     ): CheckResult? {
-        return checkAll(links, progress).working.minByOrNull { it.latencyMs }
+        return checkAll(links, progress).working.firstOrNull()
     }
 
     fun checkAll(
@@ -64,24 +99,29 @@ object VlessChecker {
         }
 
         val working = checked
-            .filter { it.isWorking && it.host != null && it.port != null && it.latencyMs != null }
+            .filter { it.isWorking && it.host != null && it.port != null && it.latencyMs != null && it.confidence != null }
             .map {
                 CheckResult(
                     link = it.link,
                     host = it.host!!,
                     port = it.port!!,
                     checkType = it.checkType,
-                    latencyMs = it.latencyMs!!
+                    latencyMs = it.latencyMs!!,
+                    confidence = it.confidence!!
                 )
             }
-            .sortedBy { it.latencyMs }
+            .sortedWith(compareBy<CheckResult> { it.confidence.rank }.thenBy { it.latencyMs })
 
+        val confirmed = working.filter { it.confidence == CheckConfidence.CONFIRMED }
+        val candidates = working.filter { it.confidence == CheckConfidence.CANDIDATE }
         val failed = checked.filter { !it.isWorking && it.host != null }
         val skipped = checked.filter { !it.isWorking && it.host == null }
 
         return BatchCheckResult(
             checked = checked,
             working = working,
+            confirmed = confirmed,
+            candidates = candidates,
             failed = failed,
             skipped = skipped
         )
@@ -95,12 +135,12 @@ object VlessChecker {
 
     fun normalizeLine(rawLine: String): String {
         return rawLine
-            .replace("\uFEFF", "")
-            .replace("\u200B", "")
-            .replace("\u200C", "")
-            .replace("\u200D", "")
-            .replace("\u2060", "")
-            .replace("\u00A0", " ")
+            .replace("﻿", "")
+            .replace("​", "")
+            .replace("‌", "")
+            .replace("‍", "")
+            .replace("⁠", "")
+            .replace(" ", " ")
             .replace("\r", "")
             .trim()
             .trim('"', '\'', '`')
@@ -149,66 +189,99 @@ object VlessChecker {
     }
 
     private fun checkParsed(rawLink: String, parsed: ParsedEndpoint): LinkCheckResult {
-        val unsupportedReason = strictUnsupportedReason(parsed)
-        if (unsupportedReason != null) {
+        val protocolLatency = if (canRunProtocolProbe(parsed)) {
+            runProtocolProbe(parsed)
+        } else {
+            null
+        }
+
+        if (protocolLatency != null) {
             return LinkCheckResult(
                 link = rawLink,
                 host = parsed.host,
                 port = parsed.port,
-                checkType = "${parsed.scheme.uppercase()} · строгая проверка",
-                latencyMs = null,
-                isWorking = false,
-                statusText = unsupportedReason
-            )
-        }
-
-        val measured = when (parsed.scheme) {
-            "vless" -> testVless(parsed)
-            "trojan" -> testTrojan(parsed)
-            else -> null
-        }
-
-        val checkType = when (parsed.scheme) {
-            "vless" -> "VLESS · строгая TCP/TLS проверка через прокси"
-            "trojan" -> "TROJAN · строгая TCP/TLS проверка через прокси"
-            else -> "${parsed.scheme.uppercase()} · строгая проверка"
-        }
-
-        return if (measured != null) {
-            LinkCheckResult(
-                link = rawLink,
-                host = parsed.host,
-                port = parsed.port,
-                checkType = checkType,
-                latencyMs = measured,
+                checkType = protocolCheckType(parsed),
+                latencyMs = protocolLatency,
                 isWorking = true,
-                statusText = "OK — ${measured} мс"
+                statusText = "Подтверждено протокольной проверкой",
+                confidence = CheckConfidence.CONFIRMED
             )
-        } else {
-            LinkCheckResult(
+        }
+
+        val reachabilityLatency = testEndpointReachability(parsed)
+        if (reachabilityLatency != null) {
+            return LinkCheckResult(
                 link = rawLink,
                 host = parsed.host,
                 port = parsed.port,
-                checkType = checkType,
-                latencyMs = null,
-                isWorking = false,
-                statusText = "Недоступно или не прошло строгую проверку"
+                checkType = candidateCheckType(parsed),
+                latencyMs = reachabilityLatency,
+                isWorking = true,
+                statusText = candidateReason(parsed),
+                confidence = CheckConfidence.CANDIDATE
             )
+        }
+
+        return LinkCheckResult(
+            link = rawLink,
+            host = parsed.host,
+            port = parsed.port,
+            checkType = failedCheckType(parsed),
+            latencyMs = null,
+            isWorking = false,
+            statusText = "Endpoint недоступен"
+        )
+    }
+
+    private fun canRunProtocolProbe(parsed: ParsedEndpoint): Boolean {
+        if (parsed.scheme !in setOf("vless", "trojan")) return false
+        if (parsed.security.equals("reality", ignoreCase = true)) return false
+        if (parsed.flow.contains("xtls-rprx-vision", ignoreCase = true)) return false
+        val transport = parsed.transport.lowercase()
+        return transport in setOf("", "tcp", "raw")
+    }
+
+    private fun protocolCheckType(parsed: ParsedEndpoint): String {
+        return when (parsed.scheme) {
+            "vless" -> "VLESS · подтверждено протокольной проверкой"
+            "trojan" -> "TROJAN · подтверждено протокольной проверкой"
+            else -> "${parsed.scheme.uppercase()} · подтверждено"
         }
     }
 
-    private fun strictUnsupportedReason(parsed: ParsedEndpoint): String? {
-        val transport = parsed.transport.lowercase()
-        if (parsed.security.equals("reality", ignoreCase = true)) {
-            return "Пропущено: REALITY не проходит строгую проверку без Xray-core"
+    private fun candidateCheckType(parsed: ParsedEndpoint): String {
+        return when {
+            parsed.security.equals("reality", ignoreCase = true) ->
+                "${parsed.scheme.uppercase()} · совместимая проверка endpoint (REALITY)"
+            parsed.flow.contains("xtls-rprx-vision", ignoreCase = true) ->
+                "${parsed.scheme.uppercase()} · совместимая проверка endpoint (Vision)"
+            parsed.transport.lowercase() !in setOf("", "tcp", "raw") ->
+                "${parsed.scheme.uppercase()} · совместимая проверка endpoint (${parsed.transport})"
+            parsed.scheme == "vmess" -> "VMESS · совместимая проверка endpoint"
+            else -> "${parsed.scheme.uppercase()} · совместимая проверка endpoint"
         }
-        if (parsed.scheme == "vmess") {
-            return "Пропущено: VMESS не проходит строгую проверку в этой версии"
+    }
+
+    private fun failedCheckType(parsed: ParsedEndpoint): String {
+        return when {
+            canRunProtocolProbe(parsed) -> protocolCheckType(parsed)
+            else -> candidateCheckType(parsed)
         }
-        if (transport !in setOf("", "tcp", "raw")) {
-            return "Пропущено: transport=${transport} пока не проверяется строго"
+    }
+
+    private fun candidateReason(parsed: ParsedEndpoint): String {
+        return when {
+            parsed.security.equals("reality", ignoreCase = true) ->
+                "Кандидат: endpoint доступен, но REALITY полноценно проверяется только Xray-core/VPN-клиентом"
+            parsed.flow.contains("xtls-rprx-vision", ignoreCase = true) ->
+                "Кандидат: endpoint доступен, но flow=xtls-rprx-vision требует полноценного клиента"
+            parsed.scheme == "vmess" ->
+                "Кандидат: endpoint доступен, но VMESS в этой версии не проходит полноценную проверку"
+            parsed.transport.lowercase() !in setOf("", "tcp", "raw") ->
+                "Кандидат: endpoint доступен, но transport=${parsed.transport} проверен только на доступность"
+            else ->
+                "Кандидат: endpoint доступен, но строгая протокольная проверка не прошла"
         }
-        return null
     }
 
     private fun parse(rawLink: String): ParsedEndpoint? {
@@ -237,6 +310,7 @@ object VlessChecker {
                 port = port,
                 security = security,
                 sni = params["sni"],
+                flow = params["flow"].orEmpty(),
                 transport = params["type"].orEmpty().ifBlank { "tcp" },
                 path = params["path"],
                 hostHeader = params["host"],
@@ -258,11 +332,13 @@ object VlessChecker {
             val encoded = cleanLink.removePrefix("vmess://")
             val jsonText = decodeBase64ToString(encoded)
             val json = JSONObject(jsonText)
-            val host = json.optString("add").ifBlank { return null }
+            val host = json.optString("add")
+            if (host.isBlank()) return null
             val port = json.optString("port").toIntOrNull() ?: return null
             val security = when {
                 json.optString("security").equals("tls", ignoreCase = true) -> "tls"
                 json.optString("tls").equals("tls", ignoreCase = true) -> "tls"
+                json.optString("security").equals("reality", ignoreCase = true) -> "reality"
                 else -> "none"
             }
             ParsedEndpoint(
@@ -271,6 +347,7 @@ object VlessChecker {
                 port = port,
                 security = security,
                 sni = json.optString("sni").ifBlank { json.optString("host") }.ifBlank { null },
+                flow = json.optString("flow"),
                 transport = json.optString("net").ifBlank { "tcp" },
                 path = json.optString("path").ifBlank { null },
                 hostHeader = json.optString("host").ifBlank { null },
@@ -326,60 +403,94 @@ object VlessChecker {
             .toMap()
     }
 
+    private fun runProtocolProbe(parsed: ParsedEndpoint, timeoutMs: Int = 4500): Long? {
+        return when (parsed.scheme) {
+            "vless" -> testVless(parsed, timeoutMs)
+            "trojan" -> testTrojan(parsed, timeoutMs)
+            else -> null
+        }
+    }
+
     private fun testVless(parsed: ParsedEndpoint, timeoutMs: Int = 4500): Long? {
         val user = parsed.user ?: return null
         val uuid = runCatching { UUID.fromString(user) }.getOrNull() ?: return null
-        val startNs = System.nanoTime()
-        return try {
-            openServerSocket(parsed, timeoutMs).use { socket ->
-                val out = socket.getOutputStream()
-                val input = socket.getInputStream()
-                out.write(buildVlessRequest(uuid, PROBE_HOST, PROBE_PORT))
-                out.flush()
-                val version = input.read()
-                if (version < 0) return null
-                val addonsLength = input.read()
-                if (addonsLength < 0) return null
-                skipFully(input, addonsLength)
-                if (!probeHttp(input, out)) return null
-                elapsedMs(startNs)
+        for (target in PROBE_TARGETS) {
+            val startNs = System.nanoTime()
+            try {
+                val socket = openServerSocket(parsed, timeoutMs)
+                socket.use {
+                    val out = it.getOutputStream()
+                    val input = it.getInputStream()
+                    out.write(buildVlessRequest(uuid, target.host, target.port))
+                    out.flush()
+                    val version = input.read()
+                    if (version < 0) return@use
+                    val addonsLength = input.read()
+                    if (addonsLength < 0) return@use
+                    skipFully(input, addonsLength)
+                    if (!probeHttp(input, out, target.request)) return@use
+                    return elapsedMs(startNs)
+                }
+            } catch (_: Exception) {
+                // Try next probe target.
             }
-        } catch (_: Exception) {
-            null
         }
+        return null
     }
 
     private fun testTrojan(parsed: ParsedEndpoint, timeoutMs: Int = 4500): Long? {
         val password = parsed.user ?: return null
+        for (target in PROBE_TARGETS) {
+            val startNs = System.nanoTime()
+            try {
+                val socket = openServerSocket(parsed, timeoutMs)
+                socket.use {
+                    val out = it.getOutputStream()
+                    val input = it.getInputStream()
+                    out.write(buildTrojanRequest(password, target.host, target.port))
+                    out.flush()
+                    if (!probeHttp(input, out, target.request)) return@use
+                    return elapsedMs(startNs)
+                }
+            } catch (_: Exception) {
+                // Try next probe target.
+            }
+        }
+        return null
+    }
+
+    private fun testEndpointReachability(parsed: ParsedEndpoint, timeoutMs: Int = 3500): Long? {
         val startNs = System.nanoTime()
         return try {
-            openServerSocket(parsed, timeoutMs).use { socket ->
-                val out = socket.getOutputStream()
-                val input = socket.getInputStream()
-                out.write(buildTrojanRequest(password, PROBE_HOST, PROBE_PORT))
-                out.flush()
-                if (!probeHttp(input, out)) return null
-                elapsedMs(startNs)
+            when {
+                parsed.security.equals("tls", ignoreCase = true) -> {
+                    Socket().use { base ->
+                        base.soTimeout = timeoutMs
+                        base.connect(InetSocketAddress(parsed.host, parsed.port), timeoutMs)
+                        wrapTls(base, parsed, timeoutMs).use { }
+                    }
+                }
+                else -> {
+                    Socket().use { socket ->
+                        socket.soTimeout = timeoutMs
+                        socket.connect(InetSocketAddress(parsed.host, parsed.port), timeoutMs)
+                    }
+                }
             }
+            elapsedMs(startNs)
         } catch (_: Exception) {
             null
         }
     }
 
-    private fun probeHttp(input: InputStream, out: java.io.OutputStream): Boolean {
-        val request = (
-            "GET / HTTP/1.1\r\n" +
-                "Host: $PROBE_HOST\r\n" +
-                "Connection: close\r\n" +
-                "User-Agent: VlessChecker/1.6\r\n\r\n"
-            ).toByteArray(Charsets.UTF_8)
+    private fun probeHttp(input: InputStream, out: java.io.OutputStream, request: ByteArray): Boolean {
         out.write(request)
         out.flush()
         return looksLikeHttpResponse(input)
     }
 
     private fun looksLikeHttpResponse(input: InputStream): Boolean {
-        val buffer = ByteArray(12)
+        val buffer = ByteArray(16)
         var total = 0
         while (total < buffer.size) {
             val read = input.read(buffer, total, buffer.size - total)
@@ -482,6 +593,7 @@ object VlessChecker {
         val port: Int,
         val security: String,
         val sni: String?,
+        val flow: String,
         val transport: String,
         val path: String?,
         val hostHeader: String?,

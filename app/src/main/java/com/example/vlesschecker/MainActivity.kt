@@ -9,6 +9,8 @@ import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Toast
+import androidx.core.content.ContextCompat
+import android.content.res.ColorStateList
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.widget.doAfterTextChanged
@@ -357,8 +359,10 @@ class MainActivity : AppCompatActivity() {
                     binding.statusText.text = getString(R.string.no_working_found)
                     binding.resultText.text = buildString {
                         appendLine(getString(R.string.source_label, sourceResult.sourceLabel))
-                        appendLine(getString(R.string.no_link_passed))
+                        appendLine(getString(R.string.no_link_passed_balanced))
                         appendLine(getString(R.string.working_count, batch.working.size))
+                        appendLine(getString(R.string.confirmed_count, batch.confirmed.size))
+                        appendLine(getString(R.string.candidate_count, batch.candidates.size))
                         appendLine(getString(R.string.failed_count, batch.failed.size))
                         appendLine(getString(R.string.skipped_count, batch.skipped.size))
                     }
@@ -386,10 +390,12 @@ class MainActivity : AppCompatActivity() {
                         appendLine(getString(R.string.check_type_label, fastest.checkType))
                         appendLine(getString(R.string.host_label, fastest.host, fastest.port))
                         appendLine(getString(R.string.working_count, batch.working.size))
+                        appendLine(getString(R.string.confirmed_count, batch.confirmed.size))
+                        appendLine(getString(R.string.candidate_count, batch.candidates.size))
                         appendLine(getString(R.string.failed_count, batch.failed.size))
                         appendLine(getString(R.string.skipped_count, batch.skipped.size))
                     }
-                    Toast.makeText(this@MainActivity, R.string.fastest_copied_to_clipboard, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, R.string.fastest_selected_to_clipboard, Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 binding.statusText.text = getString(R.string.operation_failed)
@@ -466,6 +472,7 @@ class MainActivity : AppCompatActivity() {
                 if (binding.deleteDeadSwitch.isChecked) {
                     val newText = workingLinks.joinToString("\n")
                     updateLinksEditorText(newText)
+                    ConfigFileStore.saveCurrentSnapshot(this@MainActivity, currentSelectedSource(), newText)
                     if (currentSelectedSource() == ListSource.MANUAL) {
                         AppPrefs.setServerList(this@MainActivity, newText)
                     }
@@ -484,9 +491,11 @@ class MainActivity : AppCompatActivity() {
                         appendLine(getString(R.string.latency_label, fastest.latencyMs))
                         appendLine(getString(R.string.host_label, fastest.host, fastest.port))
                     } else {
-                        appendLine(getString(R.string.no_link_passed))
+                        appendLine(getString(R.string.no_link_passed_balanced))
                     }
                     appendLine(getString(R.string.working_count, batch.working.size))
+                    appendLine(getString(R.string.confirmed_count, batch.confirmed.size))
+                    appendLine(getString(R.string.candidate_count, batch.candidates.size))
                     appendLine(getString(R.string.failed_count, batch.failed.size))
                     appendLine(getString(R.string.skipped_count, batch.skipped.size))
                 }
@@ -495,7 +504,7 @@ class MainActivity : AppCompatActivity() {
                     val toastText = if (binding.deleteDeadSwitch.isChecked) {
                         getString(R.string.full_check_done_and_cleaned)
                     } else {
-                        getString(R.string.fastest_copied_to_clipboard)
+                        getString(R.string.fastest_selected_to_clipboard)
                     }
                     Toast.makeText(this@MainActivity, toastText, Toast.LENGTH_SHORT).show()
                 } else {
@@ -590,7 +599,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderCheckedResults(items: List<LinkCheckResult>) {
-        val visibleItems = items.filter { it.isWorking }
+        val visibleItems = items
+            .filter { it.isWorking }
+            .sortedWith(
+                compareBy<LinkCheckResult> { confidenceSortRank(it.confidence) }
+                    .thenBy { it.latencyMs ?: Long.MAX_VALUE }
+            )
         binding.checkedResultsContainer.removeAllViews()
         val visible = visibleItems.isNotEmpty()
         binding.checkedResultsTitle.visibility = if (visible) View.VISIBLE else View.GONE
@@ -607,6 +621,7 @@ class MainActivity : AppCompatActivity() {
             row.endpointText.text = buildRowEndpoint(item)
             val preparedConfig = VpnImportHelper.prepareClipboardConfig(item.link)
             row.configPreviewText.text = preparedConfig
+            applyRowColors(row, item.confidence)
             row.root.setOnClickListener {
                 ClipboardHelper.copyLink(this, preparedConfig)
                 Toast.makeText(
@@ -629,15 +644,52 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun confidenceSortRank(confidence: CheckConfidence?): Int {
+        return when (confidence) {
+            CheckConfidence.CONFIRMED -> 0
+            CheckConfidence.CANDIDATE -> 1
+            null -> 2
+        }
+    }
+
+    private fun applyRowColors(row: ItemCheckedResultBinding, confidence: CheckConfidence?) {
+        val bgColor = when (confidence) {
+            CheckConfidence.CONFIRMED -> ContextCompat.getColor(this, R.color.checked_confirmed_bg)
+            CheckConfidence.CANDIDATE -> ContextCompat.getColor(this, R.color.checked_candidate_bg)
+            null -> ContextCompat.getColor(this, R.color.checked_default_bg)
+        }
+        val strokeColor = when (confidence) {
+            CheckConfidence.CONFIRMED -> ContextCompat.getColor(this, R.color.checked_confirmed_stroke)
+            CheckConfidence.CANDIDATE -> ContextCompat.getColor(this, R.color.checked_candidate_stroke)
+            null -> ContextCompat.getColor(this, R.color.checked_default_stroke)
+        }
+        val textColor = when (confidence) {
+            CheckConfidence.CONFIRMED -> ContextCompat.getColor(this, R.color.checked_confirmed_text)
+            CheckConfidence.CANDIDATE -> ContextCompat.getColor(this, R.color.checked_candidate_text)
+            null -> ContextCompat.getColor(this, R.color.checked_default_text)
+        }
+
+        row.root.setCardBackgroundColor(bgColor)
+        row.root.strokeWidth = (2 * resources.displayMetrics.density).toInt()
+        row.root.strokeColor = strokeColor
+        row.root.rippleColor = ColorStateList.valueOf(strokeColor)
+
+        row.indexText.setTextColor(textColor)
+        row.statusText.setTextColor(textColor)
+        row.endpointText.setTextColor(textColor)
+        row.configPreviewText.setTextColor(textColor)
+    }
+
     private fun buildRowStatus(item: LinkCheckResult): String {
-        val icon = when {
-            item.isWorking -> "✅"
-            item.host == null -> "⚠️"
-            else -> "❌"
+        val badge = when (item.confidence) {
+            CheckConfidence.CONFIRMED -> getString(R.string.confidence_badge_confirmed)
+            CheckConfidence.CANDIDATE -> getString(R.string.confidence_badge_candidate)
+            null -> ""
         }
         val latency = item.latencyMs?.let { getString(R.string.latency_label, it) }
             ?: getString(R.string.latency_unknown_label)
-        return "$icon ${item.statusText} · $latency"
+        return listOf(badge.takeIf { it.isNotBlank() }, item.statusText, latency)
+            .joinToString(" · ")
     }
 
     private fun buildRowEndpoint(item: LinkCheckResult): String {
@@ -646,7 +698,12 @@ class MainActivity : AppCompatActivity() {
         } else {
             getString(R.string.unknown_endpoint)
         }
-        return getString(R.string.checked_item_meta, endpoint, item.checkType)
+        val confidenceText = when (item.confidence) {
+            CheckConfidence.CONFIRMED -> getString(R.string.confidence_confirmed_long)
+            CheckConfidence.CANDIDATE -> getString(R.string.confidence_candidate_long)
+            null -> getString(R.string.confidence_unknown_long)
+        }
+        return getString(R.string.checked_item_meta, endpoint, item.checkType, confidenceText)
     }
 
     private fun importLinksFromUri(uri: Uri) {

@@ -15,6 +15,7 @@
     <string name="check_progress">Проверяю %1$d/%2$d: %3$s</string>
     <string name="no_working_found">Рабочая ссылка не найдена</string>
     <string name="no_link_passed">Ни одна ссылка не прошла строгую проверку.</string>
+    <string name="no_link_passed_balanced">Ни один конфиг не прошёл даже совместимую проверку доступности.</string>
     <string name="fastest_working_found">Найдена самая быстрая рабочая ссылка</string>
     <string name="fastest_working_found_with_source">Найдена самая быстрая рабочая ссылка из источника: %1$s</string>
     <string name="fastest_summary_title">Самая быстрая рабочая ссылка:</string>
@@ -23,10 +24,13 @@
     <string name="latency_label">Время отклика: %1$d мс</string>
     <string name="latency_unknown_label">Время отклика: —</string>
     <string name="fastest_copied_to_clipboard">Самая быстрая ссылка скопирована в буфер</string>
+    <string name="fastest_selected_to_clipboard">Самый быстрый подходящий конфиг скопирован в буфер</string>
     <string name="full_check_started">Полная проверка %1$d ссылок…</string>
     <string name="full_check_started_with_source">Полная проверка %1$d ссылок из источника: %2$s…</string>
     <string name="full_check_done">Полная проверка завершена. Рабочих: %1$d, нерабочих: %2$d, пропущено: %3$d</string>
-    <string name="working_count">Рабочих ссылок: %1$d</string>
+    <string name="working_count">Подходящих конфигов: %1$d</string>
+    <string name="confirmed_count">Подтверждено протокольно: %1$d</string>
+    <string name="candidate_count">Кандидатов по доступности: %1$d</string>
     <string name="all_results_title">Результаты по всем ссылкам:</string>
     <string name="result_line_format">%1$d. %2$s %3$s — %4$s — %5$s</string>
     <string name="failed_count">Нерабочих ссылок: %1$d</string>
@@ -68,10 +72,10 @@
     <string name="fastest_sent_via_share">Прямой импорт не найден, открыт share chooser</string>
     <string name="share_fastest_subject">Самая быстрая VPN-ссылка</string>
     <string name="share_fastest_chooser">Передать ссылку в приложение</string>
-    <string name="checked_results_title">Рабочие конфиги</string>
-    <string name="checked_results_hint">Ниже только рабочие конфиги. Нажми на плашку, чтобы скопировать очищенный конфиг для v2RayTun. Долгое нажатие — открыть в VPN-клиенте.</string>
+    <string name="checked_results_title">Подходящие конфиги</string>
+    <string name="checked_results_hint">Ниже показаны только подходящие конфиги. Зелёная плашка — подтверждённый, жёлтая — кандидат. Нажми на плашку, чтобы скопировать очищенный конфиг для v2RayTun. Долгое нажатие — открыть в VPN-клиенте.</string>
     <string name="checked_item_title">Конфиг #%1$d</string>
-    <string name="checked_item_meta">Endpoint: %1$s · %2$s</string>
+    <string name="checked_item_meta">Endpoint: %1$s · %2$s · %3$s</string>
     <string name="checked_item_copied_to_clipboard">Конфиг #%1$d скопирован в буфер для v2RayTun</string>
     <string name="v2raytun_start_sent">Команда запуска отправлена в v2RayTun</string>
     <string name="v2raytun_stop_sent">Команда остановки отправлена в v2RayTun</string>
@@ -85,6 +89,13 @@
     <string name="share_current_file_success">Файл текущего списка передан в chooser</string>
     <string name="share_working_file_success">Файл рабочих конфигов передан в chooser</string>
     <string name="saved_file_label">Локальный txt-файл: %1$s</string>
+    <string name="confidence_confirmed_short">подтверждён</string>
+    <string name="confidence_candidate_short">кандидат</string>
+    <string name="confidence_badge_confirmed">🟢 Подтверждён</string>
+    <string name="confidence_badge_candidate">🟡 Кандидат</string>
+    <string name="confidence_confirmed_long">Статус: подтверждён протокольной проверкой</string>
+    <string name="confidence_candidate_long">Статус: кандидат, доступность endpoint подтверждена</string>
+    <string name="confidence_unknown_long">Статус: неизвестно</string>
 
     <string-array name="auto_check_intervals_labels">
         <item>15 минут</item>
