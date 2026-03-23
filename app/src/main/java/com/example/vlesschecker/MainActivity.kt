@@ -20,6 +20,12 @@ import com.example.vlesschecker.databinding.ItemCheckedResultBinding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.content.ClipboardManager
+import android.content.ClipData
+import android.content.Context
+import java.io.BufferedWriter
+import java.io.OutputStreamWriter
+import android.provider.DocumentsContract
 
 class MainActivity : AppCompatActivity() {
 
@@ -44,6 +50,13 @@ class MainActivity : AppCompatActivity() {
         registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) {
                 importLinksFromUri(uri)
+            }
+        }
+
+    private val saveAsLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri ->
+            if (uri != null) {
+                saveToUri(uri)
             }
         }
 
@@ -127,6 +140,14 @@ class MainActivity : AppCompatActivity() {
 
         binding.saveDisplayedListFileButton.setOnClickListener {
             saveDisplayedListFile()
+        }
+
+        binding.saveAsButton.setOnClickListener {
+            saveAsToUserSelectedLocation()
+        }
+
+        binding.copyAllButton.setOnClickListener {
+            copyAllDisplayedToClipboard()
         }
 
         binding.importFastestVpnButton.setOnClickListener {
@@ -627,6 +648,8 @@ class MainActivity : AppCompatActivity() {
         binding.checkedResultsHint.visibility = if (visible) View.VISIBLE else View.GONE
         binding.checkedResultsContainer.visibility = if (visible) View.VISIBLE else View.GONE
         binding.saveDisplayedListFileButton.isEnabled = visible
+        binding.saveAsButton.isEnabled = visible
+        binding.copyAllButton.isEnabled = visible
         if (visible) {
             binding.checkedResultsTitle.text = getString(R.string.checked_results_title)
         }
@@ -798,6 +821,58 @@ class MainActivity : AppCompatActivity() {
             }
         }
         Toast.makeText(this, R.string.save_displayed_file_success, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun saveAsToUserSelectedLocation() {
+        val links = getDisplayedLinks()
+        if (links.isEmpty()) {
+            Toast.makeText(this, R.string.save_displayed_file_missing, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val timestamp = System.currentTimeMillis()
+        val fileName = "vless_configs_${timestamp}.txt"
+        saveAsLauncher.launch(fileName)
+    }
+
+    private fun copyAllDisplayedToClipboard() {
+        val links = getDisplayedLinks()
+        if (links.isEmpty()) {
+            Toast.makeText(this, R.string.copy_all_empty, Toast.LENGTH_SHORT).show()
+            return
+        }
+        val text = links.joinToString("\n")
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText("VLESS configs", text)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(this, getString(R.string.copy_all_success, links.size), Toast.LENGTH_SHORT).show()
+    }
+
+    private fun saveToUri(uri: Uri) {
+        val links = getDisplayedLinks()
+        if (links.isEmpty()) return
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                contentResolver.openOutputStream(uri)?.use { output ->
+                    BufferedWriter(OutputStreamWriter(output, Charsets.UTF_8)).use { writer ->
+                        links.forEach { link ->
+                            writer.write(link)
+                            writer.newLine()
+                        }
+                    }
+                }
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, R.string.save_as_success, Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, R.string.save_as_failed, Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    private fun getDisplayedLinks(): List<String> {
+        return visibleWorkingResults.map { it.link }
     }
 
     private fun importFastestIntoVpnClient() {

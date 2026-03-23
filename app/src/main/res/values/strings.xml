@@ -91,6 +91,12 @@
     <string name="save_displayed_file_success">Отображаемые конфиги сохранены в txt</string>
     <string name="save_displayed_file_missing">Сначала запусти полную проверку, чтобы появились отображаемые конфиги</string>
     <string name="saved_file_label">Локальный txt-файл: %1$s</string>
+    <string name="save_as_button">Сохранить как…</string>
+    <string name="copy_all_button">Скопировать всё</string>
+    <string name="save_as_success">Файл сохранён в выбранном месте</string>
+    <string name="save_as_failed">Не удалось сохранить файл</string>
+    <string name="copy_all_success">Скопировано %1$d ссылок</string>
+    <string name="copy_all_empty">Нет ссылок для копирования</string>
     <string name="confidence_confirmed_short">подтверждён</string>
     <string name="confidence_candidate_short">кандидат</string>
     <string name="confidence_badge_confirmed">🟢 Подтверждён</string>
