@@ -1,5 +1,7 @@
 package com.example.vlesschecker
 
+import android.content.Context
+import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.io.InputStream
 import java.net.InetSocketAddress
@@ -100,15 +102,21 @@ data class BatchCheckResult(
 )
 
 object VlessChecker {
+    private var appContext: Context? = null
+    var useXray: Boolean = false
 
-    fun findFastestAvailable(
+    fun init(context: Context) {
+        appContext = context.applicationContext
+    }
+
+    suspend fun findFastestAvailable(
         links: List<String>,
         progress: (checked: Int, total: Int, current: String) -> Unit = { _, _, _ -> }
     ): CheckResult? {
         return checkAll(links, progress).working.firstOrNull()
     }
 
-    fun checkAll(
+    suspend fun checkAll(
         links: List<String>,
         progress: (checked: Int, total: Int, current: String) -> Unit = { _, _, _ -> }
     ): BatchCheckResult {
@@ -194,7 +202,12 @@ object VlessChecker {
         }
     }
 
-    private fun checkSingleDetailed(rawLink: String): LinkCheckResult {
+    fun parseLink(link: String): ParsedEndpoint? {
+        val sanitized = canonicalizeSupportedLink(link) ?: normalizeLine(link)
+        return parse(sanitized)
+    }
+
+    private suspend fun checkSingleDetailed(rawLink: String): LinkCheckResult {
         val sanitizedLink = canonicalizeSupportedLink(rawLink) ?: normalizeLine(rawLink)
         val parsed = parse(sanitizedLink)
             ?: return LinkCheckResult(
@@ -210,7 +223,40 @@ object VlessChecker {
         return checkParsed(sanitizedLink, parsed)
     }
 
-    private fun checkParsed(rawLink: String, parsed: ParsedEndpoint): LinkCheckResult {
+    private suspend fun checkParsed(rawLink: String, parsed: ParsedEndpoint): LinkCheckResult {
+        // Xray-core проверка (если включена и контекст есть)
+        if (useXray && appContext != null) {
+            try {
+                val xrayResult = XrayCoreHelper.testLink(appContext!!, rawLink)
+                return if (xrayResult.success) {
+                    LinkCheckResult(
+                        link = rawLink,
+                        host = parsed.host,
+                        port = parsed.port,
+                        checkType = "${parsed.scheme.uppercase()} · подтверждено Xray-core",
+                        latencyMs = xrayResult.latencyMs,
+                        isWorking = true,
+                        statusText = "Гарантированно рабочий конфиг (проверено через Xray-core)",
+                        confidence = CheckConfidence.CONFIRMED
+                    )
+                } else {
+                    LinkCheckResult(
+                        link = rawLink,
+                        host = parsed.host,
+                        port = parsed.port,
+                        checkType = "${parsed.scheme.uppercase()} · не прошел проверку Xray-core",
+                        latencyMs = null,
+                        isWorking = false,
+                        statusText = "Конфиг нерабочий (Xray-core: ${xrayResult.errorMessage ?: "unknown error"})",
+                        confidence = null
+                    )
+                }
+            } catch (e: Exception) {
+                // Fallback to heuristic checks if xray fails
+                // Continue with normal flow
+            }
+        }
+
         val protocolLatency = if (canRunProtocolProbe(parsed)) {
             runProtocolProbe(parsed)
         } else {
@@ -727,7 +773,7 @@ object VlessChecker {
         return ((System.nanoTime() - startNs) / 1_000_000L).coerceAtLeast(1L)
     }
 
-    private data class ParsedEndpoint(
+    data class ParsedEndpoint(
         val scheme: String,
         val host: String,
         val port: Int,
