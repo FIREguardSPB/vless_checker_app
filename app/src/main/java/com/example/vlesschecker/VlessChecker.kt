@@ -95,8 +95,13 @@ object VlessChecker {
 
     fun normalizeLine(rawLine: String): String {
         return rawLine
-            .replace(" ", " ")
-            .replace("\n", "")
+            .replace("\uFEFF", "")
+            .replace("\u200B", "")
+            .replace("\u200C", "")
+            .replace("\u200D", "")
+            .replace("\u2060", "")
+            .replace("\u00A0", " ")
+            .replace("\r", "")
             .trim()
             .trim('"', '\'', '`')
     }
