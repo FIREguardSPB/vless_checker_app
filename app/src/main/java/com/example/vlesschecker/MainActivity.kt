@@ -343,7 +343,13 @@ class MainActivity : AppCompatActivity() {
                     AppPrefs.setLastFastestLink(this@MainActivity, "")
                     updateFastestActionsState("")
                     binding.statusText.text = getString(R.string.no_working_found)
-                    binding.resultText.text = buildDetailedList(sourceResult, batch)
+                    binding.resultText.text = buildString {
+                        appendLine(getString(R.string.source_label, sourceResult.sourceLabel))
+                        appendLine(getString(R.string.no_link_passed))
+                        appendLine(getString(R.string.working_count, batch.working.size))
+                        appendLine(getString(R.string.failed_count, batch.failed.size))
+                        appendLine(getString(R.string.skipped_count, batch.skipped.size))
+                    }
                     Toast.makeText(this@MainActivity, R.string.no_working_found, Toast.LENGTH_SHORT).show()
                 } else {
                     onFastestChosen(fastest)
@@ -367,10 +373,9 @@ class MainActivity : AppCompatActivity() {
                         appendLine(getString(R.string.latency_label, fastest.latencyMs))
                         appendLine(getString(R.string.check_type_label, fastest.checkType))
                         appendLine(getString(R.string.host_label, fastest.host, fastest.port))
-                        appendLine()
-                        appendLine(VpnImportHelper.prepareClipboardConfig(fastest.link))
-                        appendLine()
-                        append(buildDetailedList(sourceResult, batch))
+                        appendLine(getString(R.string.working_count, batch.working.size))
+                        appendLine(getString(R.string.failed_count, batch.failed.size))
+                        appendLine(getString(R.string.skipped_count, batch.skipped.size))
                     }
                     Toast.makeText(this@MainActivity, R.string.fastest_copied_to_clipboard, Toast.LENGTH_SHORT).show()
                 }
@@ -459,14 +464,17 @@ class MainActivity : AppCompatActivity() {
                     batch.skipped.size
                 )
                 binding.resultText.text = buildString {
+                    appendLine(getString(R.string.source_label, sourceResult.sourceLabel))
                     if (fastest != null) {
                         appendLine(getString(R.string.fastest_summary_title))
-                        appendLine(getString(R.string.source_label, sourceResult.sourceLabel))
                         appendLine(getString(R.string.latency_label, fastest.latencyMs))
                         appendLine(getString(R.string.host_label, fastest.host, fastest.port))
-                        appendLine()
+                    } else {
+                        appendLine(getString(R.string.no_link_passed))
                     }
-                    append(buildDetailedList(sourceResult, batch))
+                    appendLine(getString(R.string.working_count, batch.working.size))
+                    appendLine(getString(R.string.failed_count, batch.failed.size))
+                    appendLine(getString(R.string.skipped_count, batch.skipped.size))
                 }
 
                 if (workingLinks.isNotEmpty()) {
@@ -567,16 +575,19 @@ class MainActivity : AppCompatActivity() {
         binding.checkedResultsTitle.visibility = if (visible) View.VISIBLE else View.GONE
         binding.checkedResultsHint.visibility = if (visible) View.VISIBLE else View.GONE
         binding.checkedResultsContainer.visibility = if (visible) View.VISIBLE else View.GONE
+        if (visible) {
+            binding.checkedResultsTitle.text = getString(R.string.checked_results_title)
+        }
 
         items.forEachIndexed { index, item ->
             val row = ItemCheckedResultBinding.inflate(layoutInflater, binding.checkedResultsContainer, false)
             row.indexText.text = getString(R.string.checked_item_title, index + 1)
             row.statusText.text = buildRowStatus(item)
             row.endpointText.text = buildRowEndpoint(item)
-            row.configPreviewText.text = item.link.trim()
+            val preparedConfig = VpnImportHelper.prepareClipboardConfig(item.link)
+            row.configPreviewText.text = preparedConfig
             row.root.setOnClickListener {
-                val prepared = VpnImportHelper.prepareClipboardConfig(item.link)
-                ClipboardHelper.copyLink(this, prepared)
+                ClipboardHelper.copyLink(this, preparedConfig)
                 Toast.makeText(
                     this,
                     getString(R.string.checked_item_copied_to_clipboard, index + 1),
@@ -584,7 +595,7 @@ class MainActivity : AppCompatActivity() {
                 ).show()
             }
             row.root.setOnLongClickListener {
-                val openedDirectly = VpnImportHelper.importOrShare(this, item.link)
+                val openedDirectly = VpnImportHelper.importOrShare(this, preparedConfig)
                 val messageRes = if (openedDirectly) {
                     R.string.fastest_sent_to_vpn_client
                 } else {

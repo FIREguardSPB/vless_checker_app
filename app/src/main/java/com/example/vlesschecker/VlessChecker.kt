@@ -82,15 +82,44 @@ object VlessChecker {
 
     fun normalizeLines(rawText: String): List<String> {
         return rawText.lineSequence()
-            .map { it.trim() }
+            .map { normalizeLine(it) }
             .filter { it.isNotEmpty() }
             .toList()
     }
 
+    fun normalizeLine(rawLine: String): String {
+        return rawLine
+            .replace("\uFEFF", "")
+            .replace("\u200B", "")
+            .replace("\u200C", "")
+            .replace("\u200D", "")
+            .replace("\u2060", "")
+            .replace("\u00A0", " ")
+            .replace("\r", "")
+            .trim()
+            .trim('"', '\'', '`')
+    }
+
+    fun extractSupportedLink(rawText: String): String? {
+        val normalized = normalizeLine(rawText)
+        if (normalized.isBlank()) return null
+
+        val lower = normalized.lowercase()
+        val supportedSchemes = listOf("vless://", "vmess://", "trojan://")
+        val startIndex = supportedSchemes
+            .map { lower.indexOf(it) }
+            .filter { it >= 0 }
+            .minOrNull()
+            ?: return null
+
+        return normalized.substring(startIndex).trim()
+    }
+
     private fun checkSingleDetailed(rawLink: String): LinkCheckResult {
-        val parsed = parse(rawLink)
+        val sanitizedLink = extractSupportedLink(rawLink) ?: normalizeLine(rawLink)
+        val parsed = parse(sanitizedLink)
             ?: return LinkCheckResult(
-                link = rawLink,
+                link = sanitizedLink,
                 host = null,
                 port = null,
                 checkType = "Не распознано",
@@ -99,7 +128,7 @@ object VlessChecker {
                 statusText = "Пропущено: неподдерживаемая или некорректная строка"
             )
 
-        return checkParsed(rawLink, parsed)
+        return checkParsed(sanitizedLink, parsed)
     }
 
     private fun checkParsed(rawLink: String, parsed: ParsedEndpoint): LinkCheckResult {

@@ -68,6 +68,8 @@
     <string name="fastest_sent_via_share">Прямой импорт не найден, открыт share chooser</string>
     <string name="share_fastest_subject">Самая быстрая VPN-ссылка</string>
     <string name="share_fastest_chooser">Передать ссылку в приложение</string>
+    <string name="checked_results_title">Плашки результатов</string>
+    <string name="checked_results_hint">Нажми на плашку, чтобы скопировать очищенный конфиг для v2RayTun. Долгое нажатие — открыть в VPN-клиенте.</string>
     <string name="checked_item_title">Конфиг #%1$d</string>
     <string name="checked_item_meta">Endpoint: %1$s · %2$s</string>
     <string name="checked_item_copied_to_clipboard">Конфиг #%1$d скопирован в буфер для v2RayTun</string>

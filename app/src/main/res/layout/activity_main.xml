@@ -32,7 +32,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Проверка легковесная: tcp/none — TCP connect, tls — TCP + TLS handshake, reality — только TCP connect. По нажатию на проверенный конфиг он копируется в буфер в виде одной чистой ссылки, удобной для вставки в v2RayTun. Долгое нажатие — попытка открыть конфиг в совместимом VPN-клиенте."
+            android:text="Проверка легковесная: tcp/none — TCP connect, tls — TCP + TLS handshake, reality — только TCP connect. По нажатию на плашку результат копируется в буфер в очищенном валидном формате для вставки в v2RayTun. Долгое нажатие — попытка открыть конфиг в совместимом VPN-клиенте."
             android:textAppearance="@style/TextAppearance.Material3.BodySmall" />
 
         <com.google.android.material.textview.MaterialTextView
@@ -211,7 +211,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
-            android:text="Проверенные конфиги"
+            android:text="@string/checked_results_title"
             android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
             android:visibility="gone" />
 
@@ -220,7 +220,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
-            android:text="Короткое нажатие — копировать конфиг для вставки в v2RayTun. Долгое нажатие — попытаться открыть в VPN-клиенте."
+            android:text="@string/checked_results_hint"
             android:textAppearance="@style/TextAppearance.Material3.BodySmall"
             android:visibility="gone" />
 

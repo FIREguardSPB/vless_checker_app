@@ -17,11 +17,16 @@ object VpnImportHelper {
     }
 
     fun prepareClipboardConfig(link: String): String {
-        return link.trim()
+        return VlessChecker.extractSupportedLink(link)
+            ?: VlessChecker.normalizeLine(link)
     }
 
     fun importOrShare(context: Context, link: String): Boolean {
         val prepared = prepareClipboardConfig(link)
+        if (prepared.isBlank()) {
+            shareLink(context, link)
+            return false
+        }
 
         val packageIntent = Intent(Intent.ACTION_VIEW, Uri.parse(prepared)).apply {
             setPackage(V2RAY_TUN_PACKAGE)
