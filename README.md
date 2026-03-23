@@ -22,9 +22,9 @@
 - для 100% проверки именно успешного VLESS-сеанса лучше интегрировать `xray-core` или `sing-box`.
 
 ## Как открыть проект
-1. Открой папку `vless_checker_app` в Android Studio.
-2. Дождись Gradle Sync.
-3. Запусти на устройстве или эмуляторе.
+1. Открыть папку `vless_checker_app` в Android Studio.
+2. Дождаться Gradle Sync.
+3. Запустить на устройстве или эмуляторе.
 
 ## Где лежит список по умолчанию
 `app/src/main/assets/servers.txt`
@@ -39,22 +39,19 @@
 ## Как получить APK без ручной настройки
 
 ### Вариант 1 — через GitHub Actions
-1. Загрузи проект в GitHub-репозиторий.
-2. Открой вкладку **Actions**.
-3. Запусти workflow **Build Android Debug APK**.
-4. После завершения скачай artifact `vless-checker-debug-apk`.
+1. Загрузить проект в GitHub-репозиторий.
+2. Открыть вкладку **Actions**.
+3. Запустить workflow **Build Android Debug APK**.
+4. После завершения скачать artifact `vless-checker-debug-apk`.
 
 ### Вариант 2 — локально
-1. Установи Android Studio.
-2. Убедись, что установлены:
+1. Установить Android Studio.
+2. Убедиться, что установлены:
    - Android SDK Platform 34
    - Android SDK Build-Tools 34.0.0
    - Java 17
-3. В корне проекта запусти:
+3. В корне проекта запустить:
    ```bash
    ./build_debug_locally.sh
    ```
 4. APK появится в `app/build/outputs/apk/debug/`.
-
-## Почему в архиве нет готового APK
-В этом окружении нет Android SDK/Gradle и нет доступа в сеть для их загрузки, поэтому готовый APK здесь не собирается. Но проект подготовлен так, чтобы собрать debug APK автоматически на GitHub или локально без правок кода.
