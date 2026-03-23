@@ -4,6 +4,7 @@ package com.example.vlesschecker.databinding;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.Spinner;
@@ -37,19 +38,25 @@ public final class ActivityMainBinding implements ViewBinding {
   public final MaterialButton checkFirstButton;
 
   @NonNull
-  public final SwitchMaterial deleteDeadSwitch;
+  public final LinearLayout checkedResultsContainer;
 
   @NonNull
-  public final MaterialButton handoffButton;
+  public final MaterialTextView checkedResultsHint;
+
+  @NonNull
+  public final MaterialTextView checkedResultsTitle;
+
+  @NonNull
+  public final SwitchMaterial deleteDeadSwitch;
 
   @NonNull
   public final MaterialButton importButton;
 
   @NonNull
-  public final Spinner intervalSpinner;
+  public final MaterialButton importFastestVpnButton;
 
   @NonNull
-  public final MaterialTextView lastFastestText;
+  public final Spinner intervalSpinner;
 
   @NonNull
   public final TextInputEditText linksEditText;
@@ -58,22 +65,37 @@ public final class ActivityMainBinding implements ViewBinding {
   public final MaterialTextView noteText;
 
   @NonNull
+  public final MaterialButton openVpnSettingsButton;
+
+  @NonNull
   public final ProgressBar progressBar;
 
   @NonNull
-  public final MaterialButton refreshRemoteButton;
+  public final MaterialButton refreshSourceButton;
+
+  @NonNull
+  public final MaterialButton restartVpnButton;
 
   @NonNull
   public final MaterialTextView resultText;
 
   @NonNull
-  public final MaterialTextView sourceInfoText;
+  public final MaterialButton shareCurrentListFileButton;
+
+  @NonNull
+  public final MaterialButton shareWorkingListFileButton;
 
   @NonNull
   public final Spinner sourceSpinner;
 
   @NonNull
+  public final MaterialButton startVpnButton;
+
+  @NonNull
   public final MaterialTextView statusText;
+
+  @NonNull
+  public final MaterialButton stopVpnButton;
 
   @NonNull
   public final MaterialTextView subtitleText;
@@ -81,41 +103,47 @@ public final class ActivityMainBinding implements ViewBinding {
   @NonNull
   public final MaterialTextView titleText;
 
-  @NonNull
-  public final MaterialButton vpnSettingsButton;
-
   private ActivityMainBinding(@NonNull ScrollView rootView, @NonNull MaterialTextView autoCheckHint,
       @NonNull SwitchMaterial autoCheckSwitch, @NonNull MaterialButton checkAllButton,
-      @NonNull MaterialButton checkFirstButton, @NonNull SwitchMaterial deleteDeadSwitch,
-      @NonNull MaterialButton handoffButton, @NonNull MaterialButton importButton,
-      @NonNull Spinner intervalSpinner, @NonNull MaterialTextView lastFastestText,
+      @NonNull MaterialButton checkFirstButton, @NonNull LinearLayout checkedResultsContainer,
+      @NonNull MaterialTextView checkedResultsHint, @NonNull MaterialTextView checkedResultsTitle,
+      @NonNull SwitchMaterial deleteDeadSwitch, @NonNull MaterialButton importButton,
+      @NonNull MaterialButton importFastestVpnButton, @NonNull Spinner intervalSpinner,
       @NonNull TextInputEditText linksEditText, @NonNull MaterialTextView noteText,
-      @NonNull ProgressBar progressBar, @NonNull MaterialButton refreshRemoteButton,
-      @NonNull MaterialTextView resultText, @NonNull MaterialTextView sourceInfoText,
-      @NonNull Spinner sourceSpinner, @NonNull MaterialTextView statusText,
-      @NonNull MaterialTextView subtitleText, @NonNull MaterialTextView titleText,
-      @NonNull MaterialButton vpnSettingsButton) {
+      @NonNull MaterialButton openVpnSettingsButton, @NonNull ProgressBar progressBar,
+      @NonNull MaterialButton refreshSourceButton, @NonNull MaterialButton restartVpnButton,
+      @NonNull MaterialTextView resultText, @NonNull MaterialButton shareCurrentListFileButton,
+      @NonNull MaterialButton shareWorkingListFileButton, @NonNull Spinner sourceSpinner,
+      @NonNull MaterialButton startVpnButton, @NonNull MaterialTextView statusText,
+      @NonNull MaterialButton stopVpnButton, @NonNull MaterialTextView subtitleText,
+      @NonNull MaterialTextView titleText) {
     this.rootView = rootView;
     this.autoCheckHint = autoCheckHint;
     this.autoCheckSwitch = autoCheckSwitch;
     this.checkAllButton = checkAllButton;
     this.checkFirstButton = checkFirstButton;
+    this.checkedResultsContainer = checkedResultsContainer;
+    this.checkedResultsHint = checkedResultsHint;
+    this.checkedResultsTitle = checkedResultsTitle;
     this.deleteDeadSwitch = deleteDeadSwitch;
-    this.handoffButton = handoffButton;
     this.importButton = importButton;
+    this.importFastestVpnButton = importFastestVpnButton;
     this.intervalSpinner = intervalSpinner;
-    this.lastFastestText = lastFastestText;
     this.linksEditText = linksEditText;
     this.noteText = noteText;
+    this.openVpnSettingsButton = openVpnSettingsButton;
     this.progressBar = progressBar;
-    this.refreshRemoteButton = refreshRemoteButton;
+    this.refreshSourceButton = refreshSourceButton;
+    this.restartVpnButton = restartVpnButton;
     this.resultText = resultText;
-    this.sourceInfoText = sourceInfoText;
+    this.shareCurrentListFileButton = shareCurrentListFileButton;
+    this.shareWorkingListFileButton = shareWorkingListFileButton;
     this.sourceSpinner = sourceSpinner;
+    this.startVpnButton = startVpnButton;
     this.statusText = statusText;
+    this.stopVpnButton = stopVpnButton;
     this.subtitleText = subtitleText;
     this.titleText = titleText;
-    this.vpnSettingsButton = vpnSettingsButton;
   }
 
   @Override
@@ -169,15 +197,27 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
-      id = R.id.deleteDeadSwitch;
-      SwitchMaterial deleteDeadSwitch = ViewBindings.findChildViewById(rootView, id);
-      if (deleteDeadSwitch == null) {
+      id = R.id.checkedResultsContainer;
+      LinearLayout checkedResultsContainer = ViewBindings.findChildViewById(rootView, id);
+      if (checkedResultsContainer == null) {
         break missingId;
       }
 
-      id = R.id.handoffButton;
-      MaterialButton handoffButton = ViewBindings.findChildViewById(rootView, id);
-      if (handoffButton == null) {
+      id = R.id.checkedResultsHint;
+      MaterialTextView checkedResultsHint = ViewBindings.findChildViewById(rootView, id);
+      if (checkedResultsHint == null) {
+        break missingId;
+      }
+
+      id = R.id.checkedResultsTitle;
+      MaterialTextView checkedResultsTitle = ViewBindings.findChildViewById(rootView, id);
+      if (checkedResultsTitle == null) {
+        break missingId;
+      }
+
+      id = R.id.deleteDeadSwitch;
+      SwitchMaterial deleteDeadSwitch = ViewBindings.findChildViewById(rootView, id);
+      if (deleteDeadSwitch == null) {
         break missingId;
       }
 
@@ -187,15 +227,15 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
-      id = R.id.intervalSpinner;
-      Spinner intervalSpinner = ViewBindings.findChildViewById(rootView, id);
-      if (intervalSpinner == null) {
+      id = R.id.importFastestVpnButton;
+      MaterialButton importFastestVpnButton = ViewBindings.findChildViewById(rootView, id);
+      if (importFastestVpnButton == null) {
         break missingId;
       }
 
-      id = R.id.lastFastestText;
-      MaterialTextView lastFastestText = ViewBindings.findChildViewById(rootView, id);
-      if (lastFastestText == null) {
+      id = R.id.intervalSpinner;
+      Spinner intervalSpinner = ViewBindings.findChildViewById(rootView, id);
+      if (intervalSpinner == null) {
         break missingId;
       }
 
@@ -211,15 +251,27 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.openVpnSettingsButton;
+      MaterialButton openVpnSettingsButton = ViewBindings.findChildViewById(rootView, id);
+      if (openVpnSettingsButton == null) {
+        break missingId;
+      }
+
       id = R.id.progressBar;
       ProgressBar progressBar = ViewBindings.findChildViewById(rootView, id);
       if (progressBar == null) {
         break missingId;
       }
 
-      id = R.id.refreshRemoteButton;
-      MaterialButton refreshRemoteButton = ViewBindings.findChildViewById(rootView, id);
-      if (refreshRemoteButton == null) {
+      id = R.id.refreshSourceButton;
+      MaterialButton refreshSourceButton = ViewBindings.findChildViewById(rootView, id);
+      if (refreshSourceButton == null) {
+        break missingId;
+      }
+
+      id = R.id.restartVpnButton;
+      MaterialButton restartVpnButton = ViewBindings.findChildViewById(rootView, id);
+      if (restartVpnButton == null) {
         break missingId;
       }
 
@@ -229,9 +281,15 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
-      id = R.id.sourceInfoText;
-      MaterialTextView sourceInfoText = ViewBindings.findChildViewById(rootView, id);
-      if (sourceInfoText == null) {
+      id = R.id.shareCurrentListFileButton;
+      MaterialButton shareCurrentListFileButton = ViewBindings.findChildViewById(rootView, id);
+      if (shareCurrentListFileButton == null) {
+        break missingId;
+      }
+
+      id = R.id.shareWorkingListFileButton;
+      MaterialButton shareWorkingListFileButton = ViewBindings.findChildViewById(rootView, id);
+      if (shareWorkingListFileButton == null) {
         break missingId;
       }
 
@@ -241,9 +299,21 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.startVpnButton;
+      MaterialButton startVpnButton = ViewBindings.findChildViewById(rootView, id);
+      if (startVpnButton == null) {
+        break missingId;
+      }
+
       id = R.id.statusText;
       MaterialTextView statusText = ViewBindings.findChildViewById(rootView, id);
       if (statusText == null) {
+        break missingId;
+      }
+
+      id = R.id.stopVpnButton;
+      MaterialButton stopVpnButton = ViewBindings.findChildViewById(rootView, id);
+      if (stopVpnButton == null) {
         break missingId;
       }
 
@@ -259,17 +329,13 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
-      id = R.id.vpnSettingsButton;
-      MaterialButton vpnSettingsButton = ViewBindings.findChildViewById(rootView, id);
-      if (vpnSettingsButton == null) {
-        break missingId;
-      }
-
       return new ActivityMainBinding((ScrollView) rootView, autoCheckHint, autoCheckSwitch,
-          checkAllButton, checkFirstButton, deleteDeadSwitch, handoffButton, importButton,
-          intervalSpinner, lastFastestText, linksEditText, noteText, progressBar,
-          refreshRemoteButton, resultText, sourceInfoText, sourceSpinner, statusText, subtitleText,
-          titleText, vpnSettingsButton);
+          checkAllButton, checkFirstButton, checkedResultsContainer, checkedResultsHint,
+          checkedResultsTitle, deleteDeadSwitch, importButton, importFastestVpnButton,
+          intervalSpinner, linksEditText, noteText, openVpnSettingsButton, progressBar,
+          refreshSourceButton, restartVpnButton, resultText, shareCurrentListFileButton,
+          shareWorkingListFileButton, sourceSpinner, startVpnButton, statusText, stopVpnButton,
+          subtitleText, titleText);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));

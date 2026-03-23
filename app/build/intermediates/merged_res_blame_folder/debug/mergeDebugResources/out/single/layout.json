@@ -2,5 +2,9 @@
     {
         "merged": "com.example.vlesschecker.app-mergeDebugResources-3:/layout/activity_main.xml",
         "source": "com.example.vlesschecker.app-main-6:/layout/activity_main.xml"
+    },
+    {
+        "merged": "com.example.vlesschecker.app-mergeDebugResources-3:/layout/item_checked_result.xml",
+        "source": "com.example.vlesschecker.app-main-6:/layout/item_checked_result.xml"
     }
 ]

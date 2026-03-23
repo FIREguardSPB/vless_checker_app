@@ -59,16 +59,14 @@ object ConfigFileStore {
             return null
         }
         snapshotDir(context).mkdirs()
-        file.writeText(normalized.joinToString("
-") + "
-", Charsets.UTF_8)
+        file.writeText(normalized.joinToString("\n") + "\n", Charsets.UTF_8)
         return SavedConfigSnapshot(file, normalized.size, source, workingOnly)
     }
 
     private fun shareFile(context: Context, file: File, subject: String): Boolean {
         val uri = FileProvider.getUriForFile(
             context,
-            BuildConfig.APPLICATION_ID + ".fileprovider",
+            context.packageName + ".fileprovider",
             file
         )
         val intent = Intent(Intent.ACTION_SEND).apply {

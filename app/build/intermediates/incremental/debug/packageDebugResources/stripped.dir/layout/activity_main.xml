@@ -24,7 +24,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="Проверка VLESS-ссылок из локального списка или удалённых WhitePrime-списков: поиск самой быстрой рабочей ссылки, полная проверка всех ссылок с временем отклика, импорт файла и фоновая автопроверка."
+            android:text="Проверка и сравнение конфигов из локального файла или из удалённых списков XRayCheck: поиск самой быстрой рабочей ссылки, полная проверка, сохранение списков в txt и фоновая автопроверка."
             android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
 
         <com.google.android.material.textview.MaterialTextView
@@ -32,7 +32,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Проверка легковесная: tcp/none — TCP connect, tls — TCP + TLS handshake, reality — только TCP connect. Время отклика — это время подключения/handshake, а не полноценный тест Xray/VLESS-сеанса. Передача выбранной ссылки в системный VPN не встроена: приложение может передать ссылку в совместимый VPN-клиент и открыть настройки VPN Android."
+            android:text="Проверка стала строже: рабочими считаются только конфиги, которые прошли протокольную end-to-end проверку через прокси. Для этой версии строго проверяются только VLESS/Trojan с transport=tcp/raw и security=tls/none. REALITY, VMESS и нетиповые транспорты помечаются как неподтверждённые и в плашки не попадают."
             android:textAppearance="@style/TextAppearance.Material3.BodySmall" />
 
         <com.google.android.material.textview.MaterialTextView
@@ -48,20 +48,13 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp" />
 
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/sourceInfoText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="6dp"
-            android:textAppearance="@style/TextAppearance.Material3.BodySmall" />
-
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/refreshRemoteButton"
+            android:id="@+id/refreshSourceButton"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Обновить выбранный удалённый список" />
+            android:text="Подтянуть выбранный список" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/importButton"
@@ -69,6 +62,34 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:text="Импортировать локальный список из файла" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/shareCurrentListFileButton"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Передать файл списка" />
+
+            <Space
+                android:layout_width="8dp"
+                android:layout_height="wrap_content" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/shareWorkingListFileButton"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Передать файл рабочих" />
+
+        </LinearLayout>
 
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
@@ -121,14 +142,14 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="После полной проверки удалить нерабочие ссылки из списка" />
+            android:text="После полной проверки удалить нерабочие ссылки из текущего списка и из сохранённого файла" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/checkFirstButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Проверить и скопировать самую быструю из выбранного списка" />
+            android:text="Проверить и скопировать самую быструю" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/checkAllButton"
@@ -136,31 +157,59 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Проверить все и показать отклик" />
+            android:text="Проверить все и показать только рабочие" />
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/handoffButton"
+            android:id="@+id/importFastestVpnButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:enabled="false"
+            android:text="Импортировать fastest в VPN-клиент" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/openVpnSettingsButton"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Передать последнюю выбранную ссылку в VPN-клиент" />
+            android:text="Открыть системные настройки VPN" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/startVpnButton"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Старт v2RayTun" />
+
+            <Space
+                android:layout_width="8dp"
+                android:layout_height="wrap_content" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/stopVpnButton"
+                style="@style/Widget.Material3.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Стоп v2RayTun" />
+
+        </LinearLayout>
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/vpnSettingsButton"
+            android:id="@+id/restartVpnButton"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Открыть настройки VPN Android" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/lastFastestText"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:textAppearance="@style/TextAppearance.Material3.BodySmall"
-            android:textIsSelectable="true" />
+            android:text="Рестарт v2RayTun" />
 
         <ProgressBar
             android:id="@+id/progressBar"
@@ -184,6 +233,32 @@
             android:layout_marginTop="12dp"
             android:textAppearance="@style/TextAppearance.Material3.BodyMedium"
             android:textIsSelectable="true" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/checkedResultsTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="@string/checked_results_title"
+            android:textAppearance="@style/TextAppearance.Material3.TitleMedium"
+            android:visibility="gone" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/checkedResultsHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/checked_results_hint"
+            android:textAppearance="@style/TextAppearance.Material3.BodySmall"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:id="@+id/checkedResultsContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="vertical"
+            android:visibility="gone" />
 
     </LinearLayout>
 </ScrollView>

@@ -95,16 +95,10 @@ object VlessChecker {
 
     fun normalizeLine(rawLine: String): String {
         return rawLine
-            .replace("﻿", "")
-            .replace("​", "")
-            .replace("‌", "")
-            .replace("‍", "")
-            .replace("⁠", "")
             .replace(" ", " ")
-            .replace("
-", "")
+            .replace("\n", "")
             .trim()
-            .trim('"', ''', '`')
+            .trim('"', '\'', '`')
     }
 
     fun extractSupportedLink(rawText: String): String? {

@@ -1,9 +1,20 @@
 -- Merging decision tree log ---
+provider#androidx.core.content.FileProvider
+INJECTED from /app/app/src/main/AndroidManifest.xml:15:9-23:20
+	android:grantUriPermissions
+		ADDED from /app/app/src/main/AndroidManifest.xml:19:13-47
+	android:authorities
+		INJECTED from /app/app/src/main/AndroidManifest.xml
+		ADDED from /app/app/src/main/AndroidManifest.xml:17:13-64
+	android:exported
+		ADDED from /app/app/src/main/AndroidManifest.xml:18:13-37
+	android:name
+		ADDED from /app/app/src/main/AndroidManifest.xml:16:13-62
 manifest
-ADDED from /app/app/src/main/AndroidManifest.xml:2:1-27:12
-INJECTED from /app/app/src/main/AndroidManifest.xml:2:1-27:12
-INJECTED from /app/app/src/main/AndroidManifest.xml:2:1-27:12
-INJECTED from /app/app/src/main/AndroidManifest.xml:2:1-27:12
+ADDED from /app/app/src/main/AndroidManifest.xml:2:1-37:12
+INJECTED from /app/app/src/main/AndroidManifest.xml:2:1-37:12
+INJECTED from /app/app/src/main/AndroidManifest.xml:2:1-37:12
+INJECTED from /app/app/src/main/AndroidManifest.xml:2:1-37:12
 MERGED from [androidx.databinding:viewbinding:8.5.2] /home/gradle/.gradle/caches/transforms-4/bfd58c0b979626f4de018c9389ab37c9/transformed/viewbinding-8.5.2/AndroidManifest.xml:2:1-7:12
 MERGED from [com.google.android.material:material:1.12.0] /home/gradle/.gradle/caches/transforms-4/b7353b0f91cc96c56a70e946c47864af/transformed/material-1.12.0/AndroidManifest.xml:17:1-24:12
 MERGED from [androidx.appcompat:appcompat-resources:1.7.0] /home/gradle/.gradle/caches/transforms-4/ca6a6bfbd8b3ea0851a6d492fa1080e2/transformed/appcompat-resources-1.7.0/AndroidManifest.xml:2:1-7:12
@@ -82,8 +93,8 @@ ADDED from /app/app/src/main/AndroidManifest.xml:6:5-77
 	android:name
 		ADDED from /app/app/src/main/AndroidManifest.xml:6:22-74
 application
-ADDED from /app/app/src/main/AndroidManifest.xml:8:5-25:19
-INJECTED from /app/app/src/main/AndroidManifest.xml:8:5-25:19
+ADDED from /app/app/src/main/AndroidManifest.xml:8:5-35:19
+INJECTED from /app/app/src/main/AndroidManifest.xml:8:5-35:19
 MERGED from [com.google.android.material:material:1.12.0] /home/gradle/.gradle/caches/transforms-4/b7353b0f91cc96c56a70e946c47864af/transformed/material-1.12.0/AndroidManifest.xml:22:5-20
 MERGED from [com.google.android.material:material:1.12.0] /home/gradle/.gradle/caches/transforms-4/b7353b0f91cc96c56a70e946c47864af/transformed/material-1.12.0/AndroidManifest.xml:22:5-20
 MERGED from [androidx.constraintlayout:constraintlayout:2.0.1] /home/gradle/.gradle/caches/transforms-4/46f8502328fed1833ea00f104ecc3db3/transformed/constraintlayout-2.0.1/AndroidManifest.xml:9:5-20
@@ -121,23 +132,29 @@ MERGED from [androidx.startup:startup-runtime:1.1.1] /home/gradle/.gradle/caches
 	android:theme
 		ADDED from /app/app/src/main/AndroidManifest.xml:14:9-50
 activity#com.example.vlesschecker.MainActivity
-ADDED from /app/app/src/main/AndroidManifest.xml:15:9-24:20
+ADDED from /app/app/src/main/AndroidManifest.xml:25:9-34:20
 	android:launchMode
-		ADDED from /app/app/src/main/AndroidManifest.xml:18:13-43
+		ADDED from /app/app/src/main/AndroidManifest.xml:28:13-43
 	android:exported
-		ADDED from /app/app/src/main/AndroidManifest.xml:17:13-36
+		ADDED from /app/app/src/main/AndroidManifest.xml:27:13-36
 	android:name
-		ADDED from /app/app/src/main/AndroidManifest.xml:16:13-41
+		ADDED from /app/app/src/main/AndroidManifest.xml:26:13-41
 intent-filter#action:name:android.intent.action.MAIN+category:name:android.intent.category.LAUNCHER
-ADDED from /app/app/src/main/AndroidManifest.xml:19:13-23:29
+ADDED from /app/app/src/main/AndroidManifest.xml:29:13-33:29
 action#android.intent.action.MAIN
-ADDED from /app/app/src/main/AndroidManifest.xml:20:17-69
+ADDED from /app/app/src/main/AndroidManifest.xml:30:17-69
 	android:name
-		ADDED from /app/app/src/main/AndroidManifest.xml:20:25-66
+		ADDED from /app/app/src/main/AndroidManifest.xml:30:25-66
 category#android.intent.category.LAUNCHER
-ADDED from /app/app/src/main/AndroidManifest.xml:22:17-77
+ADDED from /app/app/src/main/AndroidManifest.xml:32:17-77
 	android:name
-		ADDED from /app/app/src/main/AndroidManifest.xml:22:27-74
+		ADDED from /app/app/src/main/AndroidManifest.xml:32:27-74
+meta-data#android.support.FILE_PROVIDER_PATHS
+ADDED from /app/app/src/main/AndroidManifest.xml:20:13-22:54
+	android:resource
+		ADDED from /app/app/src/main/AndroidManifest.xml:22:17-51
+	android:name
+		ADDED from /app/app/src/main/AndroidManifest.xml:21:17-67
 uses-sdk
 INJECTED from /app/app/src/main/AndroidManifest.xml reason: use-sdk injection requested
 INJECTED from /app/app/src/main/AndroidManifest.xml

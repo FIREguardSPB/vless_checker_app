@@ -1,6 +1,14 @@
 [
     {
+        "merged": "com.example.vlesschecker.app-debug-4:/layout_item_checked_result.xml.flat",
+        "source": "com.example.vlesschecker.app-main-6:/layout/item_checked_result.xml"
+    },
+    {
         "merged": "com.example.vlesschecker.app-debug-4:/layout_activity_main.xml.flat",
         "source": "com.example.vlesschecker.app-main-6:/layout/activity_main.xml"
+    },
+    {
+        "merged": "com.example.vlesschecker.app-debug-4:/xml_file_paths.xml.flat",
+        "source": "com.example.vlesschecker.app-main-6:/xml/file_paths.xml"
     }
 ]
