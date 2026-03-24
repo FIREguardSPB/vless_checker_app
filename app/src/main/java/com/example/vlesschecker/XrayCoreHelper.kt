@@ -34,8 +34,8 @@ object XrayCoreHelper {
     suspend fun ensureInitialized(context: Context) = withContext(Dispatchers.IO) {
         if (isInitialized) return@withContext
 
-        // Use codeCacheDir for binary (executable permission allowed)
-        val xrayDir = File(context.codeCacheDir, XRAY_DIR_NAME)
+        // Use cacheDir for binary (might allow execution)
+        val xrayDir = File(context.cacheDir, XRAY_DIR_NAME)
         if (!xrayDir.exists()) {
             xrayDir.mkdirs()
         }
@@ -111,7 +111,7 @@ object XrayCoreHelper {
     suspend fun testLink(context: Context, link: String): TestResult = withContext(Dispatchers.IO) {
         ensureInitialized(context)
 
-        val binaryDir = File(context.codeCacheDir, XRAY_DIR_NAME)
+        val binaryDir = File(context.cacheDir, XRAY_DIR_NAME)
         val dataDir = File(context.filesDir, XRAY_DIR_NAME)
         val binaryFile = File(binaryDir, XRAY_BINARY_NAME)
         
