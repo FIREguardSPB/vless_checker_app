@@ -232,7 +232,7 @@ object VlessChecker {
         
         if (useXray && appContext != null) {
             try {
-                val xrayResult = XrayCoreHelper.testLink(appContext!!, rawLink)
+                val xrayResult = XrayCoreHelper.testLinkBest(appContext!!, rawLink)
                 if (xrayResult.success) {
                     xrayConfirmed = true
                     xrayLatency = xrayResult.latencyMs

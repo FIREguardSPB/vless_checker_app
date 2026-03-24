@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import libv2ray.Libv2ray
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -25,6 +26,34 @@ object XrayCoreHelper {
     private const val TEST_TIMEOUT_SECONDS = 30L
 
     private var isInitialized = false
+    private var isLibraryAvailable = false
+
+    /**
+     * Initialize AndroidLibXrayLite library if available.
+     */
+    private fun initLibraryIfAvailable(context: Context) {
+        if (isLibraryAvailable) return
+        
+        try {
+            // Check if Libv2ray class is loadable
+            Class.forName("libv2ray.Libv2ray")
+            
+            // Initialize environment with data directory (where geoip.dat, geosite.dat are stored)
+            val dataDir = getDataDir(context)
+            Libv2ray.initCoreEnv(dataDir.absolutePath, "")
+            
+            // Test library version
+            val version = Libv2ray.checkVersionX()
+            Log.d(TAG, "AndroidLibXrayLite loaded: $version")
+            isLibraryAvailable = true
+        } catch (e: ClassNotFoundException) {
+            Log.w(TAG, "AndroidLibXrayLite not available in classpath: ${e.message}")
+            isLibraryAvailable = false
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize AndroidLibXrayLite: ${e.message}", e)
+            isLibraryAvailable = false
+        }
+    }
 
     /**
      * Get the best directory for storing executable binary.
@@ -464,9 +493,83 @@ object XrayCoreHelper {
         }
     }
 
+    /**
+     * Test a single proxy link using AndroidLibXrayLite library.
+     * This bypasses SELinux restrictions as it uses native library instead of binary.
+     */
+    suspend fun testLinkWithLibrary(context: Context, link: String): TestResult = withContext(Dispatchers.IO) {
+        // Ensure data files are copied
+        ensureInitialized(context)
+        
+        // Initialize library if not already
+        initLibraryIfAvailable(context)
+        if (!isLibraryAvailable) {
+            return@withContext TestResult(
+                success = false,
+                latencyMs = null,
+                errorMessage = "AndroidLibXrayLite library not available"
+            )
+        }
+        
+        try {
+            val configJson = generateXrayConfig(link)
+            Log.d(TAG, "Testing config with AndroidLibXrayLite, config length: ${configJson.length}")
+            Log.d(TAG, "Config preview (first 500 chars): ${configJson.take(500)}")
+            
+            // Use a simple test URL (Google's 204 page)
+            val testUrl = "https://www.google.com/generate_204"
+            
+            // Measure outbound delay - this will start xray-core internally, test the config,
+            // and return latency in milliseconds or throw exception if config is invalid
+            val latency = Libv2ray.measureOutboundDelay(configJson, testUrl)
+            
+            Log.d(TAG, "AndroidLibXrayLite returned latency: ${latency}ms")
+            
+            if (latency >= 0) {
+                // Success - config is valid and connection works
+                TestResult(
+                    success = true,
+                    latencyMs = latency,
+                    errorMessage = null
+                )
+            } else {
+                // Negative latency indicates error
+                TestResult(
+                    success = false,
+                    latencyMs = null,
+                    errorMessage = "xray-core library returned error (latency -1)"
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception in testLinkWithLibrary: ${e.message}", e)
+            TestResult(
+                success = false,
+                latencyMs = null,
+                errorMessage = "Library error: ${e.message}"
+            )
+        }
+    }
+
+    /**
+     * Test a link using the best available method (library preferred).
+     * If library is available, use it. Otherwise fall back to binary (which may not work on Android 16+).
+     */
+    suspend fun testLinkBest(context: Context, link: String): TestResult = withContext(Dispatchers.IO) {
+        // Try library first
+        initLibraryIfAvailable(context)
+        if (isLibraryAvailable) {
+            Log.d(TAG, "Using AndroidLibXrayLite for testing")
+            return@withContext testLinkWithLibrary(context, link)
+        }
+        
+        // Fall back to binary (legacy method)
+        Log.d(TAG, "AndroidLibXrayLite not available, falling back to binary")
+        return@withContext testLink(context, link)
+    }
+
     data class TestResult(
         val success: Boolean,
         val latencyMs: Long?,
-        val errorMessage: String?
+        errorMessage: String?
     )
 }
