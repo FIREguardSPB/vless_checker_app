@@ -29,40 +29,65 @@ object XrayCoreHelper {
     /**
      * Ensure xray binary and data files are copied from assets to internal storage.
      * Must be called before any test execution.
+     * Uses codeCacheDir for binary (executable allowed there).
      */
     suspend fun ensureInitialized(context: Context) = withContext(Dispatchers.IO) {
         if (isInitialized) return@withContext
 
-        val xrayDir = File(context.filesDir, XRAY_DIR_NAME)
+        // Use codeCacheDir for binary (executable permission allowed)
+        val xrayDir = File(context.codeCacheDir, XRAY_DIR_NAME)
         if (!xrayDir.exists()) {
             xrayDir.mkdirs()
         }
 
+        // Data files can stay in filesDir
+        val dataDir = File(context.filesDir, XRAY_DIR_NAME)
+        if (!dataDir.exists()) {
+            dataDir.mkdirs()
+        }
+
         val binaryFile = File(xrayDir, XRAY_BINARY_NAME)
-        val geoipFile = File(xrayDir, GEOIP_NAME)
-        val geositeFile = File(xrayDir, GEOSITE_NAME)
+        val geoipFile = File(dataDir, GEOIP_NAME)
+        val geositeFile = File(dataDir, GEOSITE_NAME)
 
         // Copy binary if not exists
         if (!binaryFile.exists()) {
             copyAssetToFile(context, "$XRAY_ASSETS_DIR/$XRAY_BINARY_NAME", binaryFile)
-            binaryFile.setExecutable(true)
-            Log.d(TAG, "xray binary copied and made executable: ${binaryFile.absolutePath}")
+            // Try to make executable
+            try {
+                binaryFile.setExecutable(true, false)
+                Log.d(TAG, "xray binary copied and made executable: ${binaryFile.absolutePath}")
+            } catch (e: SecurityException) {
+                Log.e(TAG, "Failed to set executable permissions: ${e.message}")
+                // Try alternative: chmod via Runtime
+                try {
+                    Runtime.getRuntime().exec(arrayOf("chmod", "755", binaryFile.absolutePath)).waitFor()
+                    Log.d(TAG, "chmod 755 applied via Runtime")
+                } catch (e2: Exception) {
+                    Log.e(TAG, "Failed to chmod via Runtime: ${e2.message}")
+                }
+            }
+        }
+
+        // Check binary permissions
+        if (!binaryFile.canExecute()) {
+            Log.w(TAG, "Binary not executable: ${binaryFile.absolutePath}, exists: ${binaryFile.exists()}, readable: ${binaryFile.canRead()}")
         }
 
         // Copy geoip.dat if not exists
         if (!geoipFile.exists()) {
             copyAssetToFile(context, "$XRAY_ASSETS_DIR/$GEOIP_NAME", geoipFile)
-            Log.d(TAG, "geoip.dat copied")
+            Log.d(TAG, "geoip.dat copied to ${geoipFile.absolutePath}")
         }
 
         // Copy geosite.dat if not exists
         if (!geositeFile.exists()) {
             copyAssetToFile(context, "$XRAY_ASSETS_DIR/$GEOSITE_NAME", geositeFile)
-            Log.d(TAG, "geosite.dat copied")
+            Log.d(TAG, "geosite.dat copied to ${geositeFile.absolutePath}")
         }
 
         isInitialized = true
-        Log.d(TAG, "xray-core initialized in ${xrayDir.absolutePath}")
+        Log.d(TAG, "xray-core initialized: binary=${binaryFile.absolutePath}, data=${dataDir.absolutePath}")
     }
 
     private fun copyAssetToFile(context: Context, assetPath: String, destFile: File) {
@@ -86,47 +111,85 @@ object XrayCoreHelper {
     suspend fun testLink(context: Context, link: String): TestResult = withContext(Dispatchers.IO) {
         ensureInitialized(context)
 
-        val xrayDir = File(context.filesDir, XRAY_DIR_NAME)
-        val binaryFile = File(xrayDir, XRAY_BINARY_NAME)
+        val binaryDir = File(context.codeCacheDir, XRAY_DIR_NAME)
+        val dataDir = File(context.filesDir, XRAY_DIR_NAME)
+        val binaryFile = File(binaryDir, XRAY_BINARY_NAME)
+        
+        // Check binary existence and permissions
+        if (!binaryFile.exists()) {
+            return@withContext TestResult(
+                success = false,
+                latencyMs = null,
+                errorMessage = "Binary not found: ${binaryFile.absolutePath}"
+            )
+        }
+        
         if (!binaryFile.canExecute()) {
             return@withContext TestResult(
                 success = false,
                 latencyMs = null,
-                errorMessage = "xray binary not executable"
+                errorMessage = "Binary not executable: ${binaryFile.absolutePath}"
             )
         }
 
         // Create temporary config file
-        val configFile = File.createTempFile("xray_test_", ".json", xrayDir)
+        val configFile = File.createTempFile("xray_test_", ".json", dataDir)
         try {
             val configJson = generateXrayConfig(link)
             configFile.writeText(configJson, Charsets.UTF_8)
+            Log.d(TAG, "Created config file: ${configFile.absolutePath} (${configJson.length} bytes)")
 
             // Run xray test command
-            val process = ProcessBuilder()
-                .command(
-                    binaryFile.absolutePath,
-                    "test",
-                    "-config",
-                    configFile.absolutePath
-                )
-                .directory(xrayDir)
-                .redirectErrorStream(true)
-                .start()
-
-            val output = try {
-                process.waitFor(TEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-                if (process.exitValue() == 0) {
-                    process.inputStream.bufferedReader().readText()
-                } else {
-                    process.inputStream.bufferedReader().readText()
-                }
+            val command = listOf(
+                binaryFile.absolutePath,
+                "test",
+                "-config",
+                configFile.absolutePath
+            )
+            Log.d(TAG, "Executing: ${command.joinToString(" ")}")
+            
+            val process = try {
+                ProcessBuilder(command)
+                    .directory(dataDir)
+                    .redirectErrorStream(true)
+                    .start()
             } catch (e: Exception) {
-                process.destroy()
+                Log.e(TAG, "Failed to start process: ${e.message}", e)
                 return@withContext TestResult(
                     success = false,
                     latencyMs = null,
-                    errorMessage = "Process timeout or error: ${e.message}"
+                    errorMessage = "Cannot start process: ${e.message}"
+                )
+            }
+
+            val output = try {
+                val completed = process.waitFor(TEST_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                if (!completed) {
+                    process.destroy()
+                    return@withContext TestResult(
+                        success = false,
+                        latencyMs = null,
+                        errorMessage = "Timeout after ${TEST_TIMEOUT_SECONDS}s"
+                    )
+                }
+                
+                val exitCode = process.exitValue()
+                val outputText = process.inputStream.bufferedReader().readText()
+                Log.d(TAG, "Process exit code: $exitCode, output length: ${outputText.length}")
+                
+                if (exitCode == 0) {
+                    outputText
+                } else {
+                    Log.w(TAG, "xray failed (exit $exitCode): ${outputText.take(500)}")
+                    outputText
+                }
+            } catch (e: Exception) {
+                process.destroy()
+                Log.e(TAG, "Process execution error: ${e.message}", e)
+                return@withContext TestResult(
+                    success = false,
+                    latencyMs = null,
+                    errorMessage = "Process error: ${e.message}"
                 )
             }
 
@@ -140,7 +203,11 @@ object XrayCoreHelper {
                 errorMessage = "Internal error: ${e.message}"
             )
         } finally {
-            configFile.delete()
+            try {
+                configFile.delete()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to delete config file: ${e.message}")
+            }
         }
     }
 
