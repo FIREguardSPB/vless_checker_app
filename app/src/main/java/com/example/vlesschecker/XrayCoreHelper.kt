@@ -119,6 +119,23 @@ object XrayCoreHelper {
             Log.d(TAG, "geosite.dat copied to ${geositeFile.absolutePath}")
         }
 
+        // Test binary works
+        try {
+            val process = ProcessBuilder(binaryFile.absolutePath, "-version")
+                .redirectErrorStream(true)
+                .start()
+            val completed = process.waitFor(10, TimeUnit.SECONDS)
+            if (completed) {
+                val output = process.inputStream.bufferedReader().readText()
+                Log.d(TAG, "Xray version check success: ${output.take(200)}")
+            } else {
+                process.destroy()
+                Log.w(TAG, "Xray version check timeout")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Xray version check failed: ${e.message}", e)
+        }
+
         isInitialized = true
         Log.d(TAG, "xray-core initialized: binary=${binaryFile.absolutePath}, data=${dataDir.absolutePath}")
     }
@@ -215,7 +232,7 @@ object XrayCoreHelper {
             val process = try {
                 ProcessBuilder(command)
                     .directory(dataDir)
-                    .redirectErrorStream(true)
+                    .redirectErrorStream(false)
                     .start().also {
                         Log.d(TAG, "Process started via ProcessBuilder")
                     }
@@ -264,15 +281,19 @@ object XrayCoreHelper {
                 }
                 
                 val exitCode = process.exitValue()
-                val outputText = process.inputStream.bufferedReader().readText()
-                Log.d(TAG, "Process exit code: $exitCode, output length: ${outputText.length}")
-                Log.d(TAG, "Raw output (first 1000 chars): ${outputText.take(1000)}")
+                val stdout = process.inputStream.bufferedReader().readText()
+                val stderr = process.errorStream.bufferedReader().readText()
+                Log.d(TAG, "Process exit code: $exitCode, stdout length: ${stdout.length}, stderr length: ${stderr.length}")
+                if (stderr.isNotBlank()) {
+                    Log.d(TAG, "Process stderr (first 500 chars): ${stderr.take(500)}")
+                }
+                Log.d(TAG, "Raw stdout (first 1000 chars): ${stdout.take(1000)}")
                 
                 if (exitCode == 0) {
-                    outputText
+                    stdout
                 } else {
-                    Log.w(TAG, "xray failed (exit $exitCode): ${outputText.take(500)}")
-                    outputText
+                    Log.w(TAG, "xray failed (exit $exitCode): ${stdout.take(500)}")
+                    stdout
                 }
             } catch (e: Exception) {
                 process.destroy()
