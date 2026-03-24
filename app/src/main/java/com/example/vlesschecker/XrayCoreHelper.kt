@@ -117,6 +117,7 @@ object XrayCoreHelper {
         
         // Check binary existence and permissions
         if (!binaryFile.exists()) {
+            Log.e(TAG, "Binary file does not exist: ${binaryFile.absolutePath}")
             return@withContext TestResult(
                 success = false,
                 latencyMs = null,
@@ -124,12 +125,21 @@ object XrayCoreHelper {
             )
         }
         
+        Log.d(TAG, "Binary file info: path=${binaryFile.absolutePath}, size=${binaryFile.length()}, readable=${binaryFile.canRead()}, writable=${binaryFile.canWrite()}, executable=${binaryFile.canExecute()}")
+        
+        // Try to make executable if not already
         if (!binaryFile.canExecute()) {
-            return@withContext TestResult(
-                success = false,
-                latencyMs = null,
-                errorMessage = "Binary not executable: ${binaryFile.absolutePath}"
-            )
+            try {
+                binaryFile.setExecutable(true, false)
+                Log.d(TAG, "Attempted to set executable permission")
+            } catch (e: SecurityException) {
+                Log.e(TAG, "Cannot set executable permission: ${e.message}")
+            }
+            // Check again
+            if (!binaryFile.canExecute()) {
+                Log.e(TAG, "Binary still not executable after setExecutable")
+                // Continue anyway - some systems report false but binary can still be executed
+            }
         }
 
         // Create temporary config file
@@ -152,14 +162,26 @@ object XrayCoreHelper {
                 ProcessBuilder(command)
                     .directory(dataDir)
                     .redirectErrorStream(true)
-                    .start()
+                    .start().also {
+                        Log.d(TAG, "Process started via ProcessBuilder")
+                    }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start process: ${e.message}", e)
-                return@withContext TestResult(
-                    success = false,
-                    latencyMs = null,
-                    errorMessage = "Cannot start process: ${e.message}"
-                )
+                Log.e(TAG, "ProcessBuilder failed: ${e.message}", e)
+                // Try fallback with Runtime.exec
+                try {
+                    Log.d(TAG, "Trying Runtime.exec fallback...")
+                    val cmd = command.toTypedArray()
+                    val process = Runtime.getRuntime().exec(cmd, null, dataDir)
+                    Log.d(TAG, "Process started via Runtime.exec")
+                    process
+                } catch (e2: Exception) {
+                    Log.e(TAG, "Runtime.exec also failed: ${e2.message}", e2)
+                    return@withContext TestResult(
+                        success = false,
+                        latencyMs = null,
+                        errorMessage = "Cannot start process: ${e.message} (Runtime.exec: ${e2.message})"
+                    )
+                }
             }
 
             val output = try {
