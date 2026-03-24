@@ -225,35 +225,33 @@ object VlessChecker {
 
     private suspend fun checkParsed(rawLink: String, parsed: ParsedEndpoint): LinkCheckResult {
         // Xray-core проверка (если включена и контекст есть)
+        var xrayConfirmed = false
+        var xrayLatency: Long? = null
+        var xrayError: String? = null
+        
         if (useXray && appContext != null) {
             try {
                 val xrayResult = XrayCoreHelper.testLink(appContext!!, rawLink)
-                return if (xrayResult.success) {
-                    LinkCheckResult(
+                if (xrayResult.success) {
+                    xrayConfirmed = true
+                    xrayLatency = xrayResult.latencyMs
+                    return LinkCheckResult(
                         link = rawLink,
                         host = parsed.host,
                         port = parsed.port,
                         checkType = "${parsed.scheme.uppercase()} · подтверждено Xray-core",
-                        latencyMs = xrayResult.latencyMs,
+                        latencyMs = xrayLatency,
                         isWorking = true,
                         statusText = "Гарантированно рабочий конфиг (проверено через Xray-core)",
                         confidence = CheckConfidence.CONFIRMED
                     )
                 } else {
-                    LinkCheckResult(
-                        link = rawLink,
-                        host = parsed.host,
-                        port = parsed.port,
-                        checkType = "${parsed.scheme.uppercase()} · не прошел проверку Xray-core",
-                        latencyMs = null,
-                        isWorking = false,
-                        statusText = "Конфиг нерабочий (Xray-core: ${xrayResult.errorMessage ?: "unknown error"})",
-                        confidence = null
-                    )
+                    xrayError = xrayResult.errorMessage
+                    // Xray не подтвердил, но не отвергаем — продолжаем эвристическую проверку
                 }
             } catch (e: Exception) {
+                xrayError = e.message
                 // Fallback to heuristic checks if xray fails
-                // Continue with normal flow
             }
         }
 
@@ -284,11 +282,16 @@ object VlessChecker {
                 strictReality && !suspicious -> CheckConfidence.CONFIRMED
                 else -> CheckConfidence.CANDIDATE
             }
-            val finalStatusText = when {
+            val baseStatusText = when {
                 strictReality && suspicious -> "Параметры REALITY/Vision валидны, но порт или хост подозрительный"
                 strictReality -> strictRealityReason(parsed)
                 suspicious -> "Кандидат: endpoint доступен, но порт или хост подозрительный"
                 else -> candidateReason(parsed)
+            }
+            val finalStatusText = if (xrayError != null) {
+                "$baseStatusText (Xray-core: ${xrayError.take(50)})"
+            } else {
+                baseStatusText
             }
             val finalCheckType = when {
                 strictReality && suspicious -> strictRealityCheckType(parsed) + " (подозрительный порт/хост)"
@@ -308,6 +311,11 @@ object VlessChecker {
             )
         }
 
+        val errorMsg = if (xrayError != null) {
+            "Endpoint недоступен (Xray-core: ${xrayError.take(50)})"
+        } else {
+            "Endpoint недоступен"
+        }
         return LinkCheckResult(
             link = rawLink,
             host = parsed.host,
@@ -315,7 +323,7 @@ object VlessChecker {
             checkType = failedCheckType(parsed),
             latencyMs = null,
             isWorking = false,
-            statusText = "Endpoint недоступен"
+            statusText = errorMsg
         )
     }
 

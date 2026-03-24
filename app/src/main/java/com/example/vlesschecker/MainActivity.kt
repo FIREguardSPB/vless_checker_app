@@ -65,6 +65,11 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Initialize VlessChecker with xray-core enabled
+        VlessChecker.init(this)
+        VlessChecker.useXray = true
+        Toast.makeText(this, "Проверка через Xray-core включена", Toast.LENGTH_LONG).show()
+
         NotificationHelper.createChannel(this)
         requestNotificationPermissionIfNeeded()
         setupUi()

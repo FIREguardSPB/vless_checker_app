@@ -273,7 +273,7 @@ object XrayCoreHelper {
             val json = JSONObject(output)
             val success = json.optBoolean("success", false)
             val latency = json.optLong("latency", -1).takeIf { it > 0 }
-            val error = json.optString("error", null).takeIf { it.isNotBlank() }
+            val error = json.optString("error", "").takeIf { it.isNotBlank() }
             TestResult(success, latency, error)
         } catch (e: Exception) {
             // If output is not JSON, assume failure
