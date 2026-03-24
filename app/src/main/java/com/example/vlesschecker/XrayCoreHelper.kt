@@ -27,24 +27,57 @@ object XrayCoreHelper {
     private var isInitialized = false
 
     /**
+     * Get the best directory for storing executable binary.
+     * Prefers externalCacheDir (if available and writable), falls back to cacheDir.
+     */
+    private fun getBinaryDir(context: Context): File {
+        // Try externalCacheDir first (less restrictive SELinux)
+        context.externalCacheDir?.let { externalDir ->
+            val dir = File(externalDir, XRAY_DIR_NAME)
+            if (!dir.exists()) {
+                dir.mkdirs()
+            }
+            // Test writability
+            val testFile = File(dir, "write_test")
+            try {
+                testFile.writeText("test")
+                testFile.delete()
+                Log.d(TAG, "Using externalCacheDir: ${dir.absolutePath}")
+                return dir
+            } catch (e: Exception) {
+                Log.w(TAG, "externalCacheDir not writable: ${e.message}")
+            }
+        }
+        // Fallback to internal cacheDir
+        val dir = File(context.cacheDir, XRAY_DIR_NAME)
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        Log.d(TAG, "Using cacheDir: ${dir.absolutePath}")
+        return dir
+    }
+
+    /**
+     * Get directory for data files (geoip.dat, geosite.dat).
+     */
+    private fun getDataDir(context: Context): File {
+        val dir = File(context.filesDir, XRAY_DIR_NAME)
+        if (!dir.exists()) {
+            dir.mkdirs()
+        }
+        return dir
+    }
+
+    /**
      * Ensure xray binary and data files are copied from assets to internal storage.
      * Must be called before any test execution.
-     * Uses codeCacheDir for binary (executable allowed there).
+     * Uses the best available directory for binary.
      */
     suspend fun ensureInitialized(context: Context) = withContext(Dispatchers.IO) {
         if (isInitialized) return@withContext
 
-        // Use cacheDir for binary (might allow execution)
-        val xrayDir = File(context.cacheDir, XRAY_DIR_NAME)
-        if (!xrayDir.exists()) {
-            xrayDir.mkdirs()
-        }
-
-        // Data files can stay in filesDir
-        val dataDir = File(context.filesDir, XRAY_DIR_NAME)
-        if (!dataDir.exists()) {
-            dataDir.mkdirs()
-        }
+        val xrayDir = getBinaryDir(context)
+        val dataDir = getDataDir(context)
 
         val binaryFile = File(xrayDir, XRAY_BINARY_NAME)
         val geoipFile = File(dataDir, GEOIP_NAME)
@@ -111,8 +144,8 @@ object XrayCoreHelper {
     suspend fun testLink(context: Context, link: String): TestResult = withContext(Dispatchers.IO) {
         ensureInitialized(context)
 
-        val binaryDir = File(context.cacheDir, XRAY_DIR_NAME)
-        val dataDir = File(context.filesDir, XRAY_DIR_NAME)
+        val binaryDir = getBinaryDir(context)
+        val dataDir = getDataDir(context)
         val binaryFile = File(binaryDir, XRAY_BINARY_NAME)
         
         // Check binary existence and permissions
@@ -176,11 +209,25 @@ object XrayCoreHelper {
                     process
                 } catch (e2: Exception) {
                     Log.e(TAG, "Runtime.exec also failed: ${e2.message}", e2)
-                    return@withContext TestResult(
-                        success = false,
-                        latencyMs = null,
-                        errorMessage = "Cannot start process: ${e.message} (Runtime.exec: ${e2.message})"
-                    )
+                    // Third attempt: try via sh -c (might bypass SELinux restrictions)
+                    try {
+                        Log.d(TAG, "Trying sh -c fallback...")
+                        val shellCmd = arrayOf(
+                            "sh",
+                            "-c",
+                            "cd \"${dataDir.absolutePath}\" && \"${binaryFile.absolutePath}\" test -config \"${configFile.absolutePath}\""
+                        )
+                        val process = Runtime.getRuntime().exec(shellCmd)
+                        Log.d(TAG, "Process started via sh -c")
+                        process
+                    } catch (e3: Exception) {
+                        Log.e(TAG, "sh -c also failed: ${e3.message}", e3)
+                        return@withContext TestResult(
+                            success = false,
+                            latencyMs = null,
+                            errorMessage = "Cannot start process: ${e.message} (Runtime.exec: ${e2.message}, sh -c: ${e3.message})"
+                        )
+                    }
                 }
             }
 
