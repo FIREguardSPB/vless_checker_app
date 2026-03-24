@@ -570,6 +570,6 @@ object XrayCoreHelper {
     data class TestResult(
         val success: Boolean,
         val latencyMs: Long?,
-        errorMessage: String?
+        val errorMessage: String?
     )
 }
