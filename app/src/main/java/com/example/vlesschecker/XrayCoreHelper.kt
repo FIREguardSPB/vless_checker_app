@@ -362,6 +362,9 @@ object XrayCoreHelper {
     }
 
     private fun generateXrayConfigFromParsed(parsed: VlessChecker.ParsedEndpoint): String {
+        Log.d(TAG, "Generating config for parsed: scheme=${parsed.scheme}, host=${parsed.host}, port=${parsed.port}, " +
+                "security=${parsed.security}, transport=${parsed.transport}, sni=${parsed.sni}, " +
+                "fingerprint=${parsed.fingerprint}, realityPublicKey=${parsed.realityPublicKey}, shortId=${parsed.shortId}")
         val outbound = JSONObject().apply {
             put("protocol", parsed.scheme)
             put("settings", JSONObject().apply {
@@ -412,17 +415,28 @@ object XrayCoreHelper {
                     val tlsSettings = JSONObject().apply {
                         put("serverName", parsed.sni ?: parsed.host)
                         put("allowInsecure", parsed.allowInsecure)
-                        if (parsed.fingerprint != null) {
-                            put("fingerprint", parsed.fingerprint)
+                        // Fingerprint is required for Reality, recommended for TLS
+                        val fingerprint = parsed.fingerprint ?: if (parsed.security.equals("reality", ignoreCase = true)) {
+                            "chrome"  // default fingerprint for Reality
+                        } else {
+                            null
+                        }
+                        if (fingerprint != null) {
+                            put("fingerprint", fingerprint)
                         }
                         if (parsed.security.equals("reality", ignoreCase = true)) {
                             val realitySettings = JSONObject().apply {
-                                put("publicKey", parsed.realityPublicKey ?: "")
+                                val publicKey = parsed.realityPublicKey
+                                if (publicKey.isNullOrEmpty()) {
+                                    Log.w(TAG, "Reality config missing publicKey, realitySettings will be invalid")
+                                }
+                                put("publicKey", publicKey ?: "")
                                 if (parsed.shortId != null) {
                                     put("shortId", parsed.shortId)
                                 }
                                 put("serverName", parsed.sni ?: parsed.host)
-                                put("fingerprint", parsed.fingerprint ?: "chrome")
+                                // Reality requires fingerprint
+                                put("fingerprint", fingerprint ?: "chrome")
                             }
                             put("realitySettings", realitySettings)
                         }
@@ -514,10 +528,16 @@ object XrayCoreHelper {
         try {
             val configJson = generateXrayConfig(link)
             Log.d(TAG, "Testing config with AndroidLibXrayLite, config length: ${configJson.length}")
-            Log.d(TAG, "Config preview (first 500 chars): ${configJson.take(500)}")
+            Log.d(TAG, "Full config (first 2000 chars):\n${configJson.take(2000)}")
             
-            // Use a simple test URL (Google's 204 page)
-            val testUrl = "https://www.google.com/generate_204"
+            // Choose test URL based on security: HTTP for none, HTTPS for TLS/Reality
+            val parsed = VlessChecker.parseLink(link)
+            val testUrl = if (parsed?.security.equals("none", ignoreCase = true)) {
+                "http://www.google.com/generate_204"  // HTTP for non‑TLS configs
+            } else {
+                "https://www.google.com/generate_204" // HTTPS for TLS/Reality
+            }
+            Log.d(TAG, "Using test URL: $testUrl (security=${parsed?.security})")
             
             // Measure outbound delay - this will start xray-core internally, test the config,
             // and return latency in milliseconds or throw exception if config is invalid
@@ -542,10 +562,17 @@ object XrayCoreHelper {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Exception in testLinkWithLibrary: ${e.message}", e)
+            // Include first 500 chars of config in error for debugging
+            val configPreview = try {
+                val configJson = generateXrayConfig(link)
+                "\nConfig preview: ${configJson.take(500)}"
+            } catch (ex: Exception) {
+                "\nFailed to generate config preview: ${ex.message}"
+            }
             TestResult(
                 success = false,
                 latencyMs = null,
-                errorMessage = "Library error: ${e.message}"
+                errorMessage = "Library error: ${e.message}$configPreview"
             )
         }
     }
