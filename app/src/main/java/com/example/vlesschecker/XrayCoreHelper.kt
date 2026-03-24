@@ -378,7 +378,13 @@ object XrayCoreHelper {
                             val user = JSONObject().apply {
                                 put("id", parsed.user ?: "")
                                 put("encryption", "none")
-                                put("flow", parsed.flow.takeIf { it.isNotEmpty() } ?: "")
+                                // For Reality, flow should be "xtls-rprx-vision"; otherwise use parsed flow or empty
+                                val flow = if (parsed.security.equals("reality", ignoreCase = true) && parsed.flow.isEmpty()) {
+                                    "xtls-rprx-vision"
+                                } else {
+                                    parsed.flow.takeIf { it.isNotEmpty() } ?: ""
+                                }
+                                put("flow", flow)
                             }
                             users.put(user)
                             put("users", users)
@@ -410,39 +416,43 @@ object XrayCoreHelper {
             })
             put("streamSettings", JSONObject().apply {
                 put("network", parsed.transport)
-                if (parsed.security.equals("tls", ignoreCase = true) ||
-                    parsed.security.equals("reality", ignoreCase = true)) {
-                    val tlsSettings = JSONObject().apply {
-                        put("serverName", parsed.sni ?: parsed.host)
-                        put("allowInsecure", parsed.allowInsecure)
-                        // Fingerprint is required for Reality, recommended for TLS
-                        val fingerprint = parsed.fingerprint ?: if (parsed.security.equals("reality", ignoreCase = true)) {
-                            "chrome"  // default fingerprint for Reality
-                        } else {
-                            null
-                        }
-                        if (fingerprint != null) {
+                // Handle security: reality, tls, or none
+                when {
+                    parsed.security.equals("reality", ignoreCase = true) -> {
+                        // Reality configuration - realitySettings at streamSettings level, no tlsSettings
+                        put("security", "reality")
+                        val realitySettings = JSONObject().apply {
+                            // Fingerprint is required for Reality
+                            val fingerprint = parsed.fingerprint ?: "chrome"
                             put("fingerprint", fingerprint)
-                        }
-                        if (parsed.security.equals("reality", ignoreCase = true)) {
-                            val realitySettings = JSONObject().apply {
-                                val publicKey = parsed.realityPublicKey
-                                if (publicKey.isNullOrEmpty()) {
-                                    Log.w(TAG, "Reality config missing publicKey, realitySettings will be invalid")
-                                }
-                                put("publicKey", publicKey ?: "")
-                                if (parsed.shortId != null) {
-                                    put("shortId", parsed.shortId)
-                                }
-                                put("serverName", parsed.sni ?: parsed.host)
-                                // Reality requires fingerprint
-                                put("fingerprint", fingerprint ?: "chrome")
+                            put("serverName", parsed.sni ?: parsed.host)
+                            val publicKey = parsed.realityPublicKey
+                            if (publicKey.isNullOrEmpty()) {
+                                Log.w(TAG, "Reality config missing publicKey, realitySettings will be invalid")
                             }
-                            put("realitySettings", realitySettings)
+                            put("publicKey", publicKey ?: "")
+                            // spiderX is required field (usually "/")
+                            put("spiderX", "/")
+                            if (parsed.shortId != null) {
+                                put("shortId", parsed.shortId)
+                            }
                         }
+                        put("realitySettings", realitySettings)
+                        // Note: no tlsSettings for Reality
                     }
-                    put("security", parsed.security)
-                    put("tlsSettings", tlsSettings)
+                    parsed.security.equals("tls", ignoreCase = true) -> {
+                        // TLS configuration
+                        put("security", "tls")
+                        val tlsSettings = JSONObject().apply {
+                            put("serverName", parsed.sni ?: parsed.host)
+                            put("allowInsecure", parsed.allowInsecure)
+                            if (parsed.fingerprint != null) {
+                                put("fingerprint", parsed.fingerprint)
+                            }
+                        }
+                        put("tlsSettings", tlsSettings)
+                    }
+                    // For "none" or other security, don't add security/tlsSettings fields
                 }
                 if (parsed.transport == "ws") {
                     val wsSettings = JSONObject().apply {
