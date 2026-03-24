@@ -22,7 +22,7 @@ object XrayCoreHelper {
     private const val GEOIP_NAME = "geoip.dat"
     private const val GEOSITE_NAME = "geosite.dat"
     private const val XRAY_DIR_NAME = "xray"
-    private const val TEST_TIMEOUT_SECONDS = 15L
+    private const val TEST_TIMEOUT_SECONDS = 30L
 
     private var isInitialized = false
 
@@ -158,6 +158,26 @@ object XrayCoreHelper {
             )
         }
         
+        // Check data files
+        val geoipFile = File(dataDir, GEOIP_NAME)
+        val geositeFile = File(dataDir, GEOSITE_NAME)
+        Log.d(TAG, "Data files check: geoip=${geoipFile.absolutePath}, exists=${geoipFile.exists()}, size=${if (geoipFile.exists()) geoipFile.length() else 0}")
+        Log.d(TAG, "Data files check: geosite=${geositeFile.absolutePath}, exists=${geositeFile.exists()}, size=${if (geositeFile.exists()) geositeFile.length() else 0}")
+        
+        if (!geoipFile.exists() || !geositeFile.exists()) {
+            Log.e(TAG, "Missing data files, re-initializing...")
+            isInitialized = false
+            ensureInitialized(context)
+            // Check again
+            if (!geoipFile.exists() || !geositeFile.exists()) {
+                return@withContext TestResult(
+                    success = false,
+                    latencyMs = null,
+                    errorMessage = "Missing xray data files (geoip.dat, geosite.dat)"
+                )
+            }
+        }
+        
         Log.d(TAG, "Binary file info: path=${binaryFile.absolutePath}, size=${binaryFile.length()}, readable=${binaryFile.canRead()}, writable=${binaryFile.canWrite()}, executable=${binaryFile.canExecute()}")
         
         // Try to make executable if not already
@@ -181,6 +201,7 @@ object XrayCoreHelper {
             val configJson = generateXrayConfig(link)
             configFile.writeText(configJson, Charsets.UTF_8)
             Log.d(TAG, "Created config file: ${configFile.absolutePath} (${configJson.length} bytes)")
+            Log.d(TAG, "Config preview (first 500 chars): ${configJson.take(500)}")
 
             // Run xray test command
             val command = listOf(
@@ -245,6 +266,7 @@ object XrayCoreHelper {
                 val exitCode = process.exitValue()
                 val outputText = process.inputStream.bufferedReader().readText()
                 Log.d(TAG, "Process exit code: $exitCode, output length: ${outputText.length}")
+                Log.d(TAG, "Raw output (first 1000 chars): ${outputText.take(1000)}")
                 
                 if (exitCode == 0) {
                     outputText
