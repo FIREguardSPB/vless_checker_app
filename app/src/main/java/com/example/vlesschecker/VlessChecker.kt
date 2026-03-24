@@ -89,7 +89,8 @@ data class LinkCheckResult(
     val latencyMs: Long?,
     val isWorking: Boolean,
     val statusText: String,
-    val confidence: CheckConfidence? = null
+    val confidence: CheckConfidence? = null,
+    val fullXrayError: String? = null
 )
 
 data class BatchCheckResult(
@@ -243,7 +244,8 @@ object VlessChecker {
                         latencyMs = xrayLatency,
                         isWorking = true,
                         statusText = "Гарантированно рабочий конфиг (проверено через Xray-core)",
-                        confidence = CheckConfidence.CONFIRMED
+                        confidence = CheckConfidence.CONFIRMED,
+                        fullXrayError = null
                     )
                 } else {
                     xrayError = xrayResult.errorMessage
@@ -270,7 +272,8 @@ object VlessChecker {
                 latencyMs = protocolLatency,
                 isWorking = true,
                 statusText = "Подтверждено протокольной проверкой",
-                confidence = CheckConfidence.CONFIRMED
+                confidence = CheckConfidence.CONFIRMED,
+                fullXrayError = null
             )
         }
 
@@ -289,7 +292,7 @@ object VlessChecker {
                 else -> candidateReason(parsed)
             }
             val finalStatusText = if (xrayError != null) {
-                "$baseStatusText (Xray-core: ${xrayError.take(50)})"
+                "$baseStatusText (Xray-core: ${xrayError.take(200)})"
             } else {
                 baseStatusText
             }
@@ -307,12 +310,13 @@ object VlessChecker {
                 latencyMs = reachabilityLatency,
                 isWorking = true,
                 statusText = finalStatusText,
-                confidence = finalConfidence
+                confidence = finalConfidence,
+                fullXrayError = xrayError
             )
         }
 
         val errorMsg = if (xrayError != null) {
-            "Endpoint недоступен (Xray-core: ${xrayError.take(50)})"
+            "Endpoint недоступен (Xray-core: ${xrayError.take(200)})"
         } else {
             "Endpoint недоступен"
         }
@@ -323,7 +327,8 @@ object VlessChecker {
             checkType = failedCheckType(parsed),
             latencyMs = null,
             isWorking = false,
-            statusText = errorMsg
+            statusText = errorMsg,
+            fullXrayError = xrayError
         )
     }
 
