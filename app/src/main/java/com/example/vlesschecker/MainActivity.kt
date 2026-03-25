@@ -1261,7 +1261,7 @@ class MainActivity : AppCompatActivity() {
     private fun startForegroundCheck(links: List<String>, source: ListSource) {
         val intent = Intent(this, ForegroundCheckingService::class.java).apply {
             putStringArrayListExtra(ForegroundCheckingService.EXTRA_CONFIGS, ArrayList(links))
-            putExtra(ForegroundCheckingService.EXTRA_SOURCE, source.toString()) // TODO: serialize properly
+            putExtra(ForegroundCheckingService.EXTRA_SOURCE, source.prefValue)
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             startForegroundService(intent)
