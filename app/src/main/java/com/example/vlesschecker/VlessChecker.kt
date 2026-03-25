@@ -110,7 +110,7 @@ object VlessChecker {
     private var appContext: Context? = null
     var useXray: Boolean = false
     private const val TAG = "VlessChecker"
-    private const val MAX_ACCEPTABLE_LATENCY_MS = 500L  // User requirement: discard proxies slower than 500 ms
+    private const val MAX_ACCEPTABLE_LATENCY_MS = 1000L  // User requirement: discard proxies slower than 1000 ms
 
     fun init(context: Context) {
         appContext = context.applicationContext
