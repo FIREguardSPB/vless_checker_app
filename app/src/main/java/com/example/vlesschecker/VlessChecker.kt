@@ -1,5 +1,8 @@
 package com.example.vlesschecker
 
+import android.content.Context
+import android.util.Log
+import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.io.InputStream
 import java.net.InetSocketAddress
@@ -87,7 +90,11 @@ data class LinkCheckResult(
     val latencyMs: Long?,
     val isWorking: Boolean,
     val statusText: String,
-    val confidence: CheckConfidence? = null
+    val confidence: CheckConfidence? = null,
+    val fullXrayError: String? = null,
+    val country: String? = null,
+    val flag: String? = null,
+    val metadata: String? = null
 )
 
 data class BatchCheckResult(
@@ -100,24 +107,47 @@ data class BatchCheckResult(
 )
 
 object VlessChecker {
+    private var appContext: Context? = null
+    var useXray: Boolean = false
+    private const val TAG = "VlessChecker"
+    // User requirement: discard proxies slower than configured latency (default 1000 ms)
+    private fun getMaxAcceptableLatencyMs(): Long {
+        val context = appContext ?: return 1000L
+        return AppPrefs.getMaxLatencyMs(context)
+    }
 
-    fun findFastestAvailable(
+    fun init(context: Context) {
+        appContext = context.applicationContext
+    }
+
+    suspend fun findFastestAvailable(
         links: List<String>,
         progress: (checked: Int, total: Int, current: String) -> Unit = { _, _, _ -> }
     ): CheckResult? {
         return checkAll(links, progress).working.firstOrNull()
     }
 
-    fun checkAll(
+    suspend fun checkAll(
         links: List<String>,
-        progress: (checked: Int, total: Int, current: String) -> Unit = { _, _, _ -> }
+        progress: (checked: Int, total: Int, current: String) -> Unit = { _, _, _ -> },
+        configs: List<ConfigWithMetadata>? = null
     ): BatchCheckResult {
         val total = links.size
         val checked = mutableListOf<LinkCheckResult>()
 
         links.forEachIndexed { index, rawLink ->
             progress(index + 1, total, rawLink)
-            checked += checkSingleDetailed(rawLink)
+            val result = checkSingleDetailed(rawLink)
+            // Enrich with metadata if configs provided
+            val enriched = if (configs != null) {
+                val matchingConfig = configs.firstOrNull { it.link == result.link }
+                result.copy(
+                    country = matchingConfig?.country,
+                    flag = matchingConfig?.flag,
+                    metadata = matchingConfig?.metadata
+                )
+            } else result
+            checked += enriched
         }
 
         val working = checked
@@ -132,6 +162,7 @@ object VlessChecker {
                     confidence = it.confidence!!
                 )
             }
+            .filter { val limit = getMaxAcceptableLatencyMs(); limit == 0L || it.latencyMs <= limit }
             .sortedWith(compareBy<CheckResult> { it.confidence.rank }.thenBy { it.latencyMs })
 
         val confirmed = working.filter { it.confidence == CheckConfidence.CONFIRMED }
@@ -149,10 +180,25 @@ object VlessChecker {
         )
     }
 
+    suspend fun checkSingle(context: Context, link: String): LinkCheckResult {
+        return checkSingleDetailed(link)
+    }
+
     fun normalizeLines(rawText: String): List<String> {
-        return rawText.lineSequence()
-            .mapNotNull { canonicalizeSupportedLink(it) }
-            .toList()
+        return parseLinesWithMetadata(rawText).map { it.link }
+    }
+
+    fun parseLinesWithMetadata(rawText: String): List<ConfigWithMetadata> {
+        val lines = rawText.lineSequence().toList()
+        Log.d(TAG, "parseLinesWithMetadata: input lines=${lines.size}, chars=${rawText.length}")
+        val result = lines.mapNotNull { ConfigWithMetadata.fromRawLine(it) }
+        Log.d(TAG, "parseLinesWithMetadata: output configs=${result.size}")
+        // Log first few configs for debugging
+        if (result.isNotEmpty()) {
+            val first = result.first()
+            Log.d(TAG, "parseLinesWithMetadata: first config: link=${first.link.take(80)}, metadata=${first.metadata}, country=${first.country}, flag=${first.flag}")
+        }
+        return result
     }
 
     fun normalizeLine(rawLine: String): String {
@@ -185,6 +231,7 @@ object VlessChecker {
 
     fun canonicalizeSupportedLink(rawText: String): String? {
         val extracted = extractSupportedLink(rawText) ?: return null
+        // Trim after # to keep only the link part for xray-core testing
         val clean = extracted.substringBefore('#').trim()
         val scheme = clean.substringBefore("://", missingDelimiterValue = "").lowercase()
         return when (scheme) {
@@ -194,7 +241,12 @@ object VlessChecker {
         }
     }
 
-    private fun checkSingleDetailed(rawLink: String): LinkCheckResult {
+    fun parseLink(link: String): ParsedEndpoint? {
+        val sanitized = canonicalizeSupportedLink(link) ?: normalizeLine(link)
+        return parse(sanitized)
+    }
+
+    private suspend fun checkSingleDetailed(rawLink: String): LinkCheckResult {
         val sanitizedLink = canonicalizeSupportedLink(rawLink) ?: normalizeLine(rawLink)
         val parsed = parse(sanitizedLink)
             ?: return LinkCheckResult(
@@ -210,7 +262,39 @@ object VlessChecker {
         return checkParsed(sanitizedLink, parsed)
     }
 
-    private fun checkParsed(rawLink: String, parsed: ParsedEndpoint): LinkCheckResult {
+    private suspend fun checkParsed(rawLink: String, parsed: ParsedEndpoint): LinkCheckResult {
+        // Xray-core проверка (если включена и контекст есть)
+        var xrayConfirmed = false
+        var xrayLatency: Long? = null
+        var xrayError: String? = null
+        
+        if (useXray && appContext != null) {
+            try {
+                val xrayResult = XrayCoreHelper.testLinkBest(appContext!!, rawLink)
+                if (xrayResult.success) {
+                    xrayConfirmed = true
+                    xrayLatency = xrayResult.latencyMs
+                    return LinkCheckResult(
+                        link = rawLink,
+                        host = parsed.host,
+                        port = parsed.port,
+                        checkType = "${parsed.scheme.uppercase()} · подтверждено Xray-core",
+                        latencyMs = xrayLatency,
+                        isWorking = true,
+                        statusText = "Гарантированно рабочий конфиг (проверено через Xray-core)",
+                        confidence = CheckConfidence.CONFIRMED,
+                        fullXrayError = null
+                    )
+                } else {
+                    xrayError = xrayResult.errorMessage
+                    // Xray не подтвердил, но не отвергаем — продолжаем эвристическую проверку
+                }
+            } catch (e: Exception) {
+                xrayError = e.message
+                // Fallback to heuristic checks if xray fails
+            }
+        }
+
         val protocolLatency = if (canRunProtocolProbe(parsed)) {
             runProtocolProbe(parsed)
         } else {
@@ -226,7 +310,8 @@ object VlessChecker {
                 latencyMs = protocolLatency,
                 isWorking = true,
                 statusText = "Подтверждено протокольной проверкой",
-                confidence = CheckConfidence.CONFIRMED
+                confidence = CheckConfidence.CONFIRMED,
+                fullXrayError = null
             )
         }
 
@@ -238,11 +323,16 @@ object VlessChecker {
                 strictReality && !suspicious -> CheckConfidence.CONFIRMED
                 else -> CheckConfidence.CANDIDATE
             }
-            val finalStatusText = when {
+            val baseStatusText = when {
                 strictReality && suspicious -> "Параметры REALITY/Vision валидны, но порт или хост подозрительный"
                 strictReality -> strictRealityReason(parsed)
                 suspicious -> "Кандидат: endpoint доступен, но порт или хост подозрительный"
                 else -> candidateReason(parsed)
+            }
+            val finalStatusText = if (xrayError != null) {
+                "$baseStatusText (Xray-core: ${xrayError.take(200)})"
+            } else {
+                baseStatusText
             }
             val finalCheckType = when {
                 strictReality && suspicious -> strictRealityCheckType(parsed) + " (подозрительный порт/хост)"
@@ -258,10 +348,16 @@ object VlessChecker {
                 latencyMs = reachabilityLatency,
                 isWorking = true,
                 statusText = finalStatusText,
-                confidence = finalConfidence
+                confidence = finalConfidence,
+                fullXrayError = xrayError
             )
         }
 
+        val errorMsg = if (xrayError != null) {
+            "Endpoint недоступен (Xray-core: ${xrayError.take(200)})"
+        } else {
+            "Endpoint недоступен"
+        }
         return LinkCheckResult(
             link = rawLink,
             host = parsed.host,
@@ -269,7 +365,8 @@ object VlessChecker {
             checkType = failedCheckType(parsed),
             latencyMs = null,
             isWorking = false,
-            statusText = "Endpoint недоступен"
+            statusText = errorMsg,
+            fullXrayError = xrayError
         )
     }
 
@@ -727,7 +824,7 @@ object VlessChecker {
         return ((System.nanoTime() - startNs) / 1_000_000L).coerceAtLeast(1L)
     }
 
-    private data class ParsedEndpoint(
+    data class ParsedEndpoint(
         val scheme: String,
         val host: String,
         val port: Int,
@@ -747,4 +844,59 @@ object VlessChecker {
     )
 
     private val CRLF = byteArrayOf(0x0D, 0x0A)
+
+    /**
+     * Represents a parsed proxy configuration with optional metadata.
+     */
+    data class ConfigWithMetadata(
+        val link: String,
+        val rawLine: String,
+        val metadata: String? = null,
+        val country: String? = null,
+        val flag: String? = null
+    ) {
+        companion object {
+            fun fromRawLine(rawLine: String): ConfigWithMetadata? {
+                val normalized = normalizeLine(rawLine)
+                if (normalized.isBlank()) return null
+
+                // Extract the full link part (including # for metadata)
+                val extracted = extractSupportedLink(normalized) ?: return null
+                val hashIndex = extracted.indexOf('#')
+                val linkWithoutMetadata = if (hashIndex >= 0) extracted.substring(0, hashIndex).trim() else extracted
+                val metadata = if (hashIndex >= 0) extracted.substring(hashIndex + 1).trim().takeIf { it.isNotBlank() } else null
+                
+                // Parse metadata for known patterns
+                var country: String? = null
+                var flag: String? = null
+                if (metadata != null) {
+                    // Pattern: "Country: RU | Flag: 🇷🇺"
+                    val countryRegex = Regex("""[Cc]ountry\s*:\s*([^|]+)""")
+                    countryRegex.find(metadata)?.let { match ->
+                        country = match.groupValues[1].trim()
+                    }
+                    // Pattern: "Flag: 🇷🇺"
+                    val flagRegex = Regex("""[Ff]lag\s*:\s*([^|]+)""")
+                    flagRegex.find(metadata)?.let { match ->
+                        flag = match.groupValues[1].trim()
+                    }
+                    // If no structured metadata, treat whole metadata as country code if short (2-3 chars)
+                    if (country == null && metadata.length <= 3 && metadata.all { it.isLetter() }) {
+                        country = metadata.uppercase()
+                    }
+                }
+
+                // Get canonical link (without metadata) for testing
+                val canonicalLink = canonicalizeSupportedLink(normalized) ?: return null
+
+                return ConfigWithMetadata(
+                    link = canonicalLink,
+                    rawLine = rawLine,
+                    metadata = metadata,
+                    country = country,
+                    flag = flag
+                )
+            }
+        }
+    }
 }

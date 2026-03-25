@@ -23,9 +23,13 @@ import kotlinx.coroutines.withContext
 import android.content.ClipboardManager
 import android.content.ClipData
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import java.io.BufferedWriter
 import java.io.OutputStreamWriter
 import android.provider.DocumentsContract
+import androidx.documentfile.provider.DocumentFile
+import com.example.vlesschecker.ForegroundCheckingService
 
 class MainActivity : AppCompatActivity() {
 
@@ -33,11 +37,31 @@ class MainActivity : AppCompatActivity() {
     private lateinit var intervalMinutes: List<Int>
     private var latestWorkingResults: List<LinkCheckResult> = emptyList()
     private var visibleWorkingResults: List<LinkCheckResult> = emptyList()
-    private val sourceItems = listOf(
-        ListSource.MANUAL,
-        ListSource.XRAY_AVAILABLE_ST_TOP100,
-        ListSource.XRAY_WHITE_LIST_ST_TOP100
-    )
+    private var sourceItems: List<ListSource> = emptyList()
+        get() = if (field.isEmpty()) ListSource.getStaticSources() else field
+
+    private val checkingReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                ACTION_CHECKING_COMPLETED -> {
+                    val successful = intent.getIntExtra("successful", 0)
+                    val total = intent.getIntExtra("total", 0)
+                    runOnUiThread {
+                        binding.statusText.text = "Проверка завершена: $successful/$total"
+                        // Refresh saved configs display
+                        refreshSavedConfigsDisplay()
+                    }
+                }
+                ACTION_CHECKING_PROGRESS -> {
+                    val checked = intent.getIntExtra("checked", 0)
+                    val total = intent.getIntExtra("total", 0)
+                    runOnUiThread {
+                        binding.statusText.text = "Проверено: $checked/$total"
+                    }
+                }
+            }
+        }
+    }
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -60,10 +84,38 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+    private val pickFolderLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null) {
+                // Grant persistable URI permission
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+                AppPrefs.setSaveLocationCustomUri(this, uri.toString())
+                Toast.makeText(this, "Папка для сохранения выбрана", Toast.LENGTH_SHORT).show()
+            } else {
+                // User cancelled, revert to ask mode
+                AppPrefs.setSaveLocationMode(this, AppPrefs.SAVE_MODE_ASK)
+                binding.saveLocationSpinner.setSelection(0)
+                Toast.makeText(this, "Выбор папки отменён", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+    companion object {
+        private const val ACTION_CHECKING_COMPLETED = "com.example.vlesschecker.action.CHECKING_COMPLETED"
+        private const val ACTION_CHECKING_PROGRESS = "com.example.vlesschecker.action.CHECKING_PROGRESS"
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
+
+        // Initialize VlessChecker with xray-core enabled
+        VlessChecker.init(this)
+        VlessChecker.useXray = true
+        Toast.makeText(this, "Проверка через Xray-core включена", Toast.LENGTH_LONG).show()
 
         NotificationHelper.createChannel(this)
         requestNotificationPermissionIfNeeded()
@@ -78,6 +130,29 @@ class MainActivity : AppCompatActivity() {
         handleIntent(intent)
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Обновить список источников, если пользователь добавил/изменил URL
+        updateSourceItems()
+        // Register broadcast receiver for foreground checking updates
+        val filter = IntentFilter().apply {
+            addAction(ACTION_CHECKING_COMPLETED)
+            addAction(ACTION_CHECKING_PROGRESS)
+        }
+        registerReceiver(checkingReceiver, filter)
+        // Restore foreground checking progress if service is still running
+        val progress = AppPrefs.getForegroundCheckingProgress(this)
+        if (progress != null) {
+            val (checked, total) = progress
+            binding.statusText.text = "Проверка в фоне: $checked/$total"
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        unregisterReceiver(checkingReceiver)
+    }
+
     private fun setupUi() {
         intervalMinutes = resources.getStringArray(R.array.auto_check_intervals_values)
             .map { it.toInt() }
@@ -87,16 +162,59 @@ class MainActivity : AppCompatActivity() {
         intervalAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.intervalSpinner.adapter = intervalAdapter
 
-        val sourceLabels = sourceItems.map { it.displayName(this) }
-        val sourceAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, sourceLabels)
-        sourceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.sourceSpinner.adapter = sourceAdapter
+        val maxConfigsLabels = resources.getStringArray(R.array.max_working_configs_labels)
+        val maxConfigsAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, maxConfigsLabels)
+        maxConfigsAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.maxConfigsSpinner.adapter = maxConfigsAdapter
+        
+        binding.maxConfigsSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val values = resources.getStringArray(R.array.max_working_configs_values)
+                val selectedValue = values[position].toIntOrNull() ?: 10
+                PersistentWorkingConfigsManager.setMaxConfigs(this@MainActivity, selectedValue)
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+
+        val maxLatencyLabels = resources.getStringArray(R.array.max_latency_labels)
+        val maxLatencyAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, maxLatencyLabels)
+        maxLatencyAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.maxLatencySpinner.adapter = maxLatencyAdapter
+        
+        binding.maxLatencySpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val values = resources.getStringArray(R.array.max_latency_values)
+                val selectedValue = values[position].toLongOrNull() ?: 1000L
+                AppPrefs.setMaxLatencyMs(this@MainActivity, selectedValue)
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+
+        val saveLocationLabels = resources.getStringArray(R.array.save_location_labels)
+        val saveLocationAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, saveLocationLabels)
+        saveLocationAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.saveLocationSpinner.adapter = saveLocationAdapter
+        
+        binding.saveLocationSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val values = resources.getStringArray(R.array.save_location_values)
+                val selectedValue = values[position].toIntOrNull() ?: AppPrefs.SAVE_MODE_ASK
+                AppPrefs.setSaveLocationMode(this@MainActivity, selectedValue)
+                // If custom mode, need to request folder selection
+                if (selectedValue == AppPrefs.SAVE_MODE_CUSTOM && AppPrefs.getSaveLocationCustomUri(this@MainActivity) == null) {
+                    requestCustomFolderSelection()
+                }
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+
+        updateSourceItems()
 
         binding.linksEditText.doAfterTextChanged {
-            if (currentSelectedSource() == ListSource.MANUAL) {
+            if (currentSelectedSource() == ListSource.Manual) {
                 val value = it?.toString().orEmpty()
                 AppPrefs.setServerList(this, value)
-                ConfigFileStore.saveCurrentSnapshot(this, ListSource.MANUAL, value)
+                ConfigFileStore.saveCurrentSnapshot(this, ListSource.Manual, value)
             }
         }
 
@@ -104,6 +222,13 @@ class MainActivity : AppCompatActivity() {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 val source = sourceItems[position]
                 AppPrefs.setSelectedSource(this@MainActivity, source)
+                if (source is ListSource.UserDefined) {
+                    if (source.url.isBlank()) {
+                        // Это не должно происходить, но на всякий случай
+                        Toast.makeText(this@MainActivity, "URL источника пуст", Toast.LENGTH_SHORT).show()
+                        return
+                    }
+                }
                 showSourcePreview(source)
                 renderCheckedResults(emptyList())
                 if (binding.autoCheckSwitch.isChecked) {
@@ -112,6 +237,18 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+
+        binding.sourceSpinner.setOnLongClickListener {
+            // Открываем управление источниками
+            val intent = Intent(this, UserSourcesActivity::class.java)
+            startActivity(intent)
+            true
+        }
+
+        binding.manageSourcesButton.setOnClickListener {
+            val intent = Intent(this, UserSourcesActivity::class.java)
+            startActivity(intent)
         }
 
         binding.refreshSourceButton.setOnClickListener {
@@ -135,7 +272,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.checkAllButton.setOnClickListener {
-            runFullCheck()
+            runFullCheck(smartSelection = true)
+        }
+        binding.checkAllButton.setOnLongClickListener {
+            runFullCheck(smartSelection = false)
+            true
+        }
+
+        binding.showSavedButton.setOnClickListener {
+            refreshSavedConfigsDisplay()
         }
 
         binding.saveDisplayedListFileButton.setOnClickListener {
@@ -217,7 +362,7 @@ class MainActivity : AppCompatActivity() {
         if (AppPrefs.getServerList(this).isBlank()) {
             AppPrefs.setServerList(this, manualText)
         }
-        ConfigFileStore.saveCurrentSnapshot(this, ListSource.MANUAL, manualText)
+        ConfigFileStore.saveCurrentSnapshot(this, ListSource.Manual, manualText)
 
         binding.deleteDeadSwitch.isChecked = AppPrefs.isDeleteDeadOnFullScan(this)
         binding.hideCandidatesSwitch.isChecked = AppPrefs.isHideCandidates(this)
@@ -228,16 +373,32 @@ class MainActivity : AppCompatActivity() {
         binding.intervalSpinner.setSelection(selectedIntervalIndex)
         updateIntervalHint(savedInterval)
 
+        val maxConfigsValues = resources.getStringArray(R.array.max_working_configs_values).map { it.toInt() }
+        val savedMaxConfigs = PersistentWorkingConfigsManager.getMaxConfigs(this)
+        val selectedMaxConfigsIndex = maxConfigsValues.indexOf(savedMaxConfigs).takeIf { it >= 0 } ?: 1 // default 10
+        binding.maxConfigsSpinner.setSelection(selectedMaxConfigsIndex)
+
+        val maxLatencyValues = resources.getStringArray(R.array.max_latency_values).map { it.toLong() }
+        val savedMaxLatency = AppPrefs.getMaxLatencyMs(this)
+        val selectedMaxLatencyIndex = maxLatencyValues.indexOf(savedMaxLatency).takeIf { it >= 0 } ?: 2 // default 1000 ms (index 2)
+        binding.maxLatencySpinner.setSelection(selectedMaxLatencyIndex)
+
+        val saveLocationValues = resources.getStringArray(R.array.save_location_values).map { it.toInt() }
+        val savedSaveLocation = AppPrefs.getSaveLocationMode(this)
+        val selectedSaveLocationIndex = saveLocationValues.indexOf(savedSaveLocation).takeIf { it >= 0 } ?: 0 // default ask
+        binding.saveLocationSpinner.setSelection(selectedSaveLocationIndex)
+
+        // Обновить список источников (включая пользовательские)
+        updateSourceItems()
+
         val selectedSource = AppPrefs.getSelectedSource(this)
-        val selectedSourceIndex = sourceItems.indexOf(selectedSource).takeIf { it >= 0 } ?: 0
-        binding.sourceSpinner.setSelection(selectedSourceIndex)
 
         binding.statusText.text = getString(R.string.ready_status)
         binding.resultText.text = ""
         renderCheckedResults(emptyList())
         updateFastestActionsState(AppPrefs.getLastFastestLink(this))
 
-        if (selectedSource != ListSource.MANUAL && AppPrefs.getRemoteCache(this, selectedSource).isBlank()) {
+        if (selectedSource != ListSource.Manual && AppPrefs.getRemoteCache(this, selectedSource).isBlank()) {
             refreshSelectedSource(showToast = false)
         }
 
@@ -264,7 +425,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showSourcePreview(source: ListSource) {
         when (source) {
-            ListSource.MANUAL -> {
+            ListSource.Manual -> {
                 val text = AppPrefs.getServerList(this).ifBlank { loadLinksFromAssets() }
                 updateLinksEditorText(text)
                 binding.statusText.text = getString(R.string.source_selected_status, source.displayName(this))
@@ -296,7 +457,7 @@ class MainActivity : AppCompatActivity() {
     private fun refreshSelectedSource(showToast: Boolean) {
         val source = currentSelectedSource()
         renderCheckedResults(emptyList())
-        if (source == ListSource.MANUAL) {
+        if (source == ListSource.Manual) {
             binding.statusText.text = getString(R.string.manual_source_no_refresh_needed)
             if (showToast) {
                 Toast.makeText(this, R.string.manual_source_no_refresh_needed, Toast.LENGTH_SHORT).show()
@@ -355,7 +516,7 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val sourceResult = loadActiveSourceText(forceRemoteRefresh = currentSelectedSource() != ListSource.MANUAL)
+                val sourceResult = loadActiveSourceText(forceRemoteRefresh = currentSelectedSource() != ListSource.Manual)
                 val links = sourceResult.links
                 if (links.isEmpty()) {
                     binding.statusText.text = getString(R.string.empty_list)
@@ -371,7 +532,7 @@ class MainActivity : AppCompatActivity() {
                 )
 
                 val batch = withContext(Dispatchers.IO) {
-                    VlessChecker.checkAll(links) { checked, total, current ->
+                    VlessChecker.checkAll(links, { checked, total, current ->
                         runOnUiThread {
                             binding.statusText.text = getString(
                                 R.string.check_progress,
@@ -380,8 +541,15 @@ class MainActivity : AppCompatActivity() {
                                 current.take(80)
                             )
                         }
-                    }
+                    }, sourceResult.configs)
                 }
+                
+                // Update persistent storage with new working configs
+                PersistentWorkingConfigsManager.updateWithNewResults(
+                    context = this@MainActivity,
+                    newResults = batch.checked,
+                    source = sourceResult.source
+                )
 
                 renderCheckedResults(batch.checked.filter { it.isWorking })
 
@@ -440,18 +608,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun runFullCheck() {
+    private fun runFullCheck(smartSelection: Boolean = true) {
         setBusy(true)
         renderCheckedResults(emptyList())
-        binding.statusText.text = getString(
-            R.string.preparing_source_for_check,
-            currentSelectedSource().displayName(this)
-        )
+        val modeText = if (smartSelection) "умный режим" else "полная проверка"
+        binding.statusText.text = "Подготовка ($modeText)..."
         binding.resultText.text = ""
 
         lifecycleScope.launch {
             try {
-                val sourceResult = loadActiveSourceText(forceRemoteRefresh = currentSelectedSource() != ListSource.MANUAL)
+                val sourceResult = loadActiveSourceText(forceRemoteRefresh = currentSelectedSource() != ListSource.Manual)
                 val links = sourceResult.links
                 if (links.isEmpty()) {
                     binding.statusText.text = getString(R.string.empty_list)
@@ -460,90 +626,32 @@ class MainActivity : AppCompatActivity() {
                     return@launch
                 }
 
+                val selectedLinks = if (smartSelection) {
+                    // Умный выбор конфигов для проверки
+                    selectConfigsToCheck(links)
+                } else {
+                    // Полная проверка всего списка
+                    links
+                }
+                if (selectedLinks.isEmpty()) {
+                    binding.statusText.text = "Достаточно рабочих конфигов. Проверка не требуется."
+                    Toast.makeText(this@MainActivity, "Достаточно рабочих конфигов", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
                 binding.statusText.text = getString(
                     R.string.full_check_started_with_source,
-                    links.size,
+                    selectedLinks.size,
                     sourceResult.sourceLabel
                 )
+                Toast.makeText(this@MainActivity, "Запуск: $modeText (${selectedLinks.size} конфигов)", Toast.LENGTH_SHORT).show()
 
-                val batch = withContext(Dispatchers.IO) {
-                    VlessChecker.checkAll(links) { checked, total, current ->
-                        runOnUiThread {
-                            binding.statusText.text = getString(
-                                R.string.check_progress,
-                                checked,
-                                total,
-                                current.take(80)
-                            )
-                        }
-                    }
-                }
-
-                val workingDetailed = batch.checked.filter { it.isWorking }
-                renderCheckedResults(workingDetailed)
-
-                val confirmedLinks = batch.confirmed.map { it.link }
-                val workingLinks = batch.working.map { it.link }
-                persistVisibleResultsSnapshot()
-                val fastest = batch.working.firstOrNull()
-                if (fastest != null) {
-                    onFastestChosen(fastest)
-                    NotificationHelper.showFoundLinkNotification(
-                        context = this@MainActivity,
-                        link = fastest.link,
-                        title = getString(R.string.notification_title_all, batch.working.size),
-                        text = getString(
-                            R.string.notification_fastest_text,
-                            fastest.latencyMs,
-                            NotificationHelper.shorten(fastest.link, 56)
-                        )
-                    )
-                } else {
-                    AppPrefs.setLastFastestLink(this@MainActivity, "")
-                    updateFastestActionsState("")
-                }
-
-                if (binding.deleteDeadSwitch.isChecked) {
-                    val newText = workingLinks.joinToString("\n")
-                    updateLinksEditorText(newText)
-                    ConfigFileStore.saveCurrentSnapshot(this@MainActivity, currentSelectedSource(), newText)
-                    if (currentSelectedSource() == ListSource.MANUAL) {
-                        AppPrefs.setServerList(this@MainActivity, newText)
-                    }
-                }
-
-                binding.statusText.text = getString(
-                    R.string.full_check_done,
-                    batch.working.size,
-                    batch.failed.size,
-                    batch.skipped.size
-                )
-                binding.resultText.text = buildString {
-                    appendLine(getString(R.string.source_label, sourceResult.sourceLabel))
-                    if (fastest != null) {
-                        appendLine(getString(R.string.fastest_summary_title))
-                        appendLine(getString(R.string.latency_label, fastest.latencyMs))
-                        appendLine(getString(R.string.host_label, fastest.host, fastest.port))
-                    } else {
-                        appendLine(getString(R.string.no_link_passed_balanced))
-                    }
-                    appendLine(getString(R.string.working_count, batch.working.size))
-                    appendLine(getString(R.string.confirmed_count, batch.confirmed.size))
-                    appendLine(getString(R.string.candidate_count, batch.candidates.size))
-                    appendLine(getString(R.string.failed_count, batch.failed.size))
-                    appendLine(getString(R.string.skipped_count, batch.skipped.size))
-                }
-
-                if (workingLinks.isNotEmpty()) {
-                    val toastText = if (binding.deleteDeadSwitch.isChecked) {
-                        getString(R.string.full_check_done_and_cleaned)
-                    } else {
-                        getString(R.string.fastest_selected_to_clipboard)
-                    }
-                    Toast.makeText(this@MainActivity, toastText, Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this@MainActivity, R.string.no_working_found, Toast.LENGTH_SHORT).show()
-                }
+                // Start foreground service for background checking
+                ForegroundCheckingService.start(this@MainActivity, selectedLinks, sourceResult.source)
+                
+                // Update UI to show background checking status
+                binding.statusText.text = "Проверка запущена в фоне. Подождите..."
+                
             } catch (e: Exception) {
                 binding.statusText.text = getString(R.string.operation_failed)
                 binding.resultText.text = e.message ?: getString(R.string.operation_failed)
@@ -554,9 +662,65 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun refreshSavedConfigsDisplay() {
+        val maxLatency = AppPrefs.getMaxLatencyMs(this).takeIf { it > 0 }
+        val saved = PersistentWorkingConfigsManager.getConfigs(
+            this,
+            onlyWorking = true,
+            maxLatency = maxLatency
+        )
+        val linkResults = saved.map { config ->
+            LinkCheckResult(
+                link = config.link,
+                host = null,
+                port = null,
+                checkType = "saved",
+                latencyMs = config.latencyMs,
+                isWorking = true, // already filtered
+                statusText = "Сохранённый конфиг",
+                confidence = null,
+                fullXrayError = null,
+                country = config.country,
+                flag = config.flag,
+                metadata = config.metadata
+            )
+        }
+        renderCheckedResults(linkResults)
+        binding.statusText.text = "Сохранённые конфиги: ${saved.size}"
+    }
+
+    /**
+     * Выбирает ссылки для проверки с учётом уже сохранённых рабочих конфигов.
+     * @param allLinks Все доступные ссылки из источника.
+     * @return Список ссылок для проверки (обычно меньше, чем allLinks).
+     */
+    private fun selectConfigsToCheck(allLinks: List<String>): List<String> {
+        val maxLatency = AppPrefs.getMaxLatencyMs(this).takeIf { it > 0 }
+        val saved = PersistentWorkingConfigsManager.getConfigs(
+            this,
+            onlyWorking = true,
+            maxLatency = maxLatency
+        )
+        val maxConfigs = PersistentWorkingConfigsManager.getMaxConfigs(this)
+        val savedLinks = saved.map { it.link }.toSet()
+        
+        // Уже есть достаточно конфигов?
+        if (saved.size >= maxConfigs) {
+            // Проверим 3 случайные ссылки для возможного улучшения (замены медленных)
+            val candidates = allLinks.filter { it !in savedLinks }.shuffled().take(3)
+            return if (candidates.isEmpty()) emptyList() else candidates
+        }
+        
+        val needed = maxConfigs - saved.size
+        // Выбрать случайные ссылки, которых ещё нет в сохранённых
+        val availableNew = allLinks.filter { it !in savedLinks }.shuffled()
+        val toCheck = availableNew.take(needed.coerceAtMost(availableNew.size))
+        return toCheck
+    }
+
     private suspend fun loadActiveSourceText(forceRemoteRefresh: Boolean): SourceTextResult {
         val source = currentSelectedSource()
-        return if (source == ListSource.MANUAL) {
+        return if (source == ListSource.Manual) {
             val manualText = binding.linksEditText.text?.toString().orEmpty()
             AppPrefs.setServerList(this, manualText)
             ConfigFileStore.saveCurrentSnapshot(this, source, manualText)
@@ -764,11 +928,11 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        AppPrefs.setSelectedSource(this, ListSource.MANUAL)
-        binding.sourceSpinner.setSelection(sourceItems.indexOf(ListSource.MANUAL))
+        AppPrefs.setSelectedSource(this, ListSource.Manual)
+        binding.sourceSpinner.setSelection(sourceItems.indexOf(ListSource.Manual))
         updateLinksEditorText(text)
         AppPrefs.setServerList(this, text)
-        ConfigFileStore.saveCurrentSnapshot(this, ListSource.MANUAL, text)
+        ConfigFileStore.saveCurrentSnapshot(this, ListSource.Manual, text)
         renderCheckedResults(emptyList())
         binding.statusText.text = getString(R.string.import_success)
         binding.resultText.text = buildString {
@@ -780,7 +944,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun shareCurrentListFile() {
         val source = currentSelectedSource()
-        if (source == ListSource.MANUAL) {
+        if (source == ListSource.Manual) {
             val currentText = binding.linksEditText.text?.toString().orEmpty()
             AppPrefs.setServerList(this, currentText)
             ConfigFileStore.saveCurrentSnapshot(this, source, currentText)
@@ -831,7 +995,38 @@ class MainActivity : AppCompatActivity() {
         }
         val timestamp = System.currentTimeMillis()
         val fileName = "vless_configs_${timestamp}.txt"
-        saveAsLauncher.launch(fileName)
+        val content = links.joinToString("\n")
+        
+        val mode = AppPrefs.getSaveLocationMode(this)
+        if (mode == AppPrefs.SAVE_MODE_CUSTOM) {
+            // Save directly to custom folder
+            saveWithSettings(
+                content = content,
+                suggestedFileName = fileName,
+                onSuccess = { uri ->
+                    runOnUiThread {
+                        binding.resultText.text = buildString {
+                            appendLine(getString(R.string.save_as_success))
+                            appendLine("Файл: ${uri.lastPathSegment}")
+                            val existing = binding.resultText.text?.toString().orEmpty().trim()
+                            if (existing.isNotBlank()) {
+                                appendLine()
+                                append(existing)
+                            }
+                        }
+                        Toast.makeText(this, R.string.save_as_success, Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onFailure = { message ->
+                    runOnUiThread {
+                        Toast.makeText(this, "Ошибка: $message", Toast.LENGTH_LONG).show()
+                    }
+                }
+            )
+        } else {
+            // For ASK, DOWNLOADS, DOCUMENTS use system picker
+            saveAsLauncher.launch(fileName)
+        }
     }
 
     private fun copyAllDisplayedToClipboard() {
@@ -919,7 +1114,7 @@ class MainActivity : AppCompatActivity() {
         val interval = AppPrefs.getAutoCheckIntervalMinutes(this)
         updateIntervalHint(interval)
         if (binding.autoCheckSwitch.isChecked) {
-            if (currentSelectedSource() == ListSource.MANUAL) {
+            if (currentSelectedSource() == ListSource.Manual) {
                 AppPrefs.setServerList(this, binding.linksEditText.text?.toString().orEmpty())
             }
             AutoCheckScheduler.schedule(this, interval)
@@ -942,15 +1137,36 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private fun updateSourceItems() {
+        sourceItems = ListSource.getAllSources(this)
+        val sourceLabels = sourceItems.map { it.displayName(this) }
+        val sourceAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, sourceLabels)
+        sourceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.sourceSpinner.adapter = sourceAdapter
+        
+        // Показать/скрыть кнопку управления источниками
+        // Всегда показываем кнопку, чтобы пользователь мог добавить первый источник
+        binding.manageSourcesButton.visibility = View.VISIBLE
+
+        // Восстановить выбранный источник после обновления списка
+        val selectedSource = AppPrefs.getSelectedSource(this)
+        val selectedSourceIndex = sourceItems.indexOf(selectedSource).takeIf { it >= 0 } ?: 0
+        binding.sourceSpinner.setSelection(selectedSourceIndex)
+    }
+
     private fun setBusy(isBusy: Boolean) {
         binding.checkFirstButton.isEnabled = !isBusy
         binding.checkAllButton.isEnabled = !isBusy
+        binding.showSavedButton.isEnabled = !isBusy
         binding.importButton.isEnabled = !isBusy
         binding.shareCurrentListFileButton.isEnabled = !isBusy
         binding.shareWorkingListFileButton.isEnabled = !isBusy
         binding.refreshSourceButton.isEnabled = !isBusy
         binding.sourceSpinner.isEnabled = !isBusy
         binding.intervalSpinner.isEnabled = !isBusy
+        binding.maxConfigsSpinner.isEnabled = !isBusy
+        binding.maxLatencySpinner.isEnabled = !isBusy
+        binding.saveLocationSpinner.isEnabled = !isBusy
         binding.autoCheckSwitch.isEnabled = !isBusy
         binding.deleteDeadSwitch.isEnabled = !isBusy
         binding.hideCandidatesSwitch.isEnabled = !isBusy
@@ -985,6 +1201,138 @@ class MainActivity : AppCompatActivity() {
             assets.open("servers.txt").bufferedReader().use { it.readText() }
         } catch (_: Exception) {
             ""
+        }
+    }
+
+    private fun showUserDefinedUrlDialog() {
+        val currentUrl = AppPrefs.getUserDefinedUrl(this)
+        val currentName = AppPrefs.getUserDefinedName(this).takeIf { it.isNotBlank() } ?: ""
+
+        val view = layoutInflater.inflate(R.layout.dialog_user_source, null)
+        val urlEditText = view.findViewById<android.widget.EditText>(R.id.urlEditText)
+        val nameEditText = view.findViewById<android.widget.EditText>(R.id.nameEditText)
+        urlEditText.setText(currentUrl)
+        nameEditText.setText(currentName)
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(R.string.user_defined_url_dialog_title)
+            .setView(view)
+            .setPositiveButton(R.string.save) { dialog, _ ->
+                val url = urlEditText.text.toString().trim()
+                val name = nameEditText.text.toString().trim()
+                if (url.isBlank()) {
+                    Toast.makeText(this, R.string.url_cannot_be_empty, Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                    Toast.makeText(this, R.string.url_must_be_http_or_https, Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                AppPrefs.setUserDefinedUrl(this, url)
+                AppPrefs.setUserDefinedName(this, name)
+                // Refresh current source if it's USER_DEFINED
+                if (currentSelectedSource() is ListSource.UserDefined) {
+                    refreshSelectedSource(showToast = true)
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton(R.string.cancel) { dialog, _ ->
+                dialog.dismiss()
+            }
+            .setNeutralButton(R.string.clear) { dialog, _ ->
+                AppPrefs.setUserDefinedUrl(this, "")
+                AppPrefs.setUserDefinedName(this, "")
+                if (currentSelectedSource() is ListSource.UserDefined) {
+                    // Switch to MANUAL source if URL cleared while USER_DEFINED selected
+                    AppPrefs.setSelectedSource(this, ListSource.Manual)
+                    binding.sourceSpinner.setSelection(sourceItems.indexOf(ListSource.Manual))
+                }
+                Toast.makeText(this, R.string.url_cleared, Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            }
+            .show()
+    }
+
+    private fun requestCustomFolderSelection() {
+        // Launch document tree picker
+        pickFolderLauncher.launch(null)
+    }
+
+    private fun startForegroundCheck(links: List<String>, source: ListSource) {
+        val intent = Intent(this, ForegroundCheckingService::class.java).apply {
+            putStringArrayListExtra(ForegroundCheckingService.EXTRA_CONFIGS, ArrayList(links))
+            putExtra(ForegroundCheckingService.EXTRA_SOURCE, source.prefValue)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+        binding.statusText.text = "Запущена фоновая проверка ${links.size} конфигов"
+        Toast.makeText(this, "Проверка запущена в фоне", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun saveWithSettings(
+        content: String,
+        suggestedFileName: String,
+        onSuccess: (uri: Uri) -> Unit,
+        onFailure: (message: String) -> Unit
+    ) {
+        val mode = AppPrefs.getSaveLocationMode(this)
+        when (mode) {
+            AppPrefs.SAVE_MODE_ASK -> {
+                // Use system picker
+                saveAsLauncher.launch(suggestedFileName)
+                // Note: result will be handled by saveAsLauncher's callback
+                // We cannot directly call onSuccess/onFailure here
+                // For now, we'll assume the picker works
+                // TODO: refactor to handle callback properly
+                Toast.makeText(this, "Выберите место сохранения", Toast.LENGTH_SHORT).show()
+            }
+            AppPrefs.SAVE_MODE_DOWNLOADS, AppPrefs.SAVE_MODE_DOCUMENTS -> {
+                // For now, fallback to ASK mode
+                Toast.makeText(this, "Режим Downloads/Documents пока не реализован, используется выбор вручную", Toast.LENGTH_SHORT).show()
+                saveAsLauncher.launch(suggestedFileName)
+            }
+            AppPrefs.SAVE_MODE_CUSTOM -> {
+                val uriString = AppPrefs.getSaveLocationCustomUri(this)
+                if (uriString == null) {
+                    // Should not happen, but fallback
+                    Toast.makeText(this, "Папка не выбрана, используется выбор вручную", Toast.LENGTH_SHORT).show()
+                    saveAsLauncher.launch(suggestedFileName)
+                    return
+                }
+                val treeUri = Uri.parse(uriString)
+                try {
+                    val documentTree = androidx.documentfile.provider.DocumentFile.fromTreeUri(this, treeUri)
+                    if (documentTree == null || !documentTree.exists() || !documentTree.canWrite()) {
+                        Toast.makeText(this, "Нет доступа к папке, используется выбор вручную", Toast.LENGTH_SHORT).show()
+                        saveAsLauncher.launch(suggestedFileName)
+                        return
+                    }
+                    // Create or find file
+                    var targetFile = documentTree.findFile(suggestedFileName)
+                    if (targetFile == null) {
+                        targetFile = documentTree.createFile("text/plain", suggestedFileName)
+                    }
+                    if (targetFile == null) {
+                        onFailure("Не удалось создать файл в выбранной папке")
+                        return
+                    }
+                    // Write content
+                    contentResolver.openOutputStream(targetFile.uri)?.use { output ->
+                        output.write(content.toByteArray())
+                    }
+                    onSuccess(targetFile.uri)
+                    Toast.makeText(this, "Файл сохранён в выбранной папке", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    onFailure("Ошибка сохранения: ${e.message}")
+                }
+            }
+            else -> {
+                // Default to ASK
+                saveAsLauncher.launch(suggestedFileName)
+            }
         }
     }
 }

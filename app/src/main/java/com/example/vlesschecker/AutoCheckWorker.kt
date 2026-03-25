@@ -20,7 +20,7 @@ class AutoCheckWorker(
                 RemoteListRepository.loadForSource(
                     context = applicationContext,
                     source = selectedSource,
-                    preferFreshRemote = selectedSource != ListSource.MANUAL
+                    preferFreshRemote = selectedSource != ListSource.Manual
                 )
             }
 

@@ -104,6 +104,18 @@
     <string name="confidence_confirmed_long">Статус: подтверждён протокольной проверкой</string>
     <string name="confidence_candidate_long">Статус: кандидат, доступность endpoint подтверждена</string>
     <string name="confidence_unknown_long">Статус: неизвестно</string>
+    <string name="source_user_defined_label">Пользовательский URL</string>
+    <string name="user_defined_url_dialog_title">Настройка пользовательского URL</string>
+    <string name="url_hint">URL списка конфигов</string>
+    <string name="name_hint">Название (опционально)</string>
+    <string name="save">Сохранить</string>
+    <string name="cancel">Отмена</string>
+    <string name="clear">Очистить</string>
+    <string name="url_cannot_be_empty">URL не может быть пустым</string>
+    <string name="url_must_be_http_or_https">URL должен начинаться с http:// или https://</string>
+    <string name="url_cleared">URL очищен</string>
+    <string name="max_working_configs_label">Максимум рабочих конфигов</string>
+    <string name="max_latency_label">Максимальная задержка (мс)</string>
 
     <string-array name="auto_check_intervals_labels">
         <item>15 минут</item>
@@ -117,5 +129,55 @@
         <item>30</item>
         <item>60</item>
         <item>180</item>
+    </string-array>
+
+    <string-array name="max_working_configs_labels">
+        <item>5</item>
+        <item>10</item>
+        <item>15</item>
+        <item>20</item>
+        <item>30</item>
+        <item>50</item>
+    </string-array>
+
+    <string-array name="max_working_configs_values">
+        <item>5</item>
+        <item>10</item>
+        <item>15</item>
+        <item>20</item>
+        <item>30</item>
+        <item>50</item>
+    </string-array>
+
+    <string-array name="max_latency_labels">
+        <item>500 мс</item>
+        <item>750 мс</item>
+        <item>1000 мс</item>
+        <item>1500 мс</item>
+        <item>2000 мс</item>
+        <item>Без ограничения</item>
+    </string-array>
+
+    <string-array name="max_latency_values">
+        <item>500</item>
+        <item>750</item>
+        <item>1000</item>
+        <item>1500</item>
+        <item>2000</item>
+        <item>0</item>
+    </string-array>
+
+    <string name="save_location_label">Папка для сохранения</string>
+    <string-array name="save_location_labels">
+        <item>Запрашивать каждый раз</item>
+        <item>Автоматически в Downloads</item>
+        <item>Автоматически в Documents</item>
+        <item>Выбранная папка</item>
+    </string-array>
+    <string-array name="save_location_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
     </string-array>
 </resources>

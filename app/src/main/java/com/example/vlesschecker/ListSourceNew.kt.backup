@@ -1,0 +1,43 @@
+package com.example.vlesschecker
+
+import android.content.Context
+
+sealed class ListSource(val prefValue: String) {
+    object Manual : ListSource("manual")
+    object XrayAvailable : ListSource("xray_available_st_top100")
+    object XrayWhitelist : ListSource("xray_white_list_st_top100")
+    data class UserDefined(val id: String, val name: String) : ListSource("user_defined:$id")
+
+    fun displayName(context: Context): String {
+        return when (this) {
+            is Manual -> context.getString(R.string.source_manual_label)
+            is XrayAvailable -> context.getString(R.string.source_xray_available_label)
+            is XrayWhitelist -> context.getString(R.string.source_xray_whitelist_label)
+            is UserDefined -> name
+        }
+    }
+
+    companion object {
+        fun fromPrefValue(value: String?): ListSource {
+            return when (value) {
+                "manual" -> Manual
+                "xray_available_st_top100" -> XrayAvailable
+                "xray_white_list_st_top100" -> XrayWhitelist
+                else -> {
+                    if (value?.startsWith("user_defined:") == true) {
+                        val id = value.substringAfter("user_defined:")
+                        // Try to get name from UserSourceManager
+                        // For now, return placeholder
+                        UserDefined(id, "Пользовательский URL")
+                    } else {
+                        Manual
+                    }
+                }
+            }
+        }
+
+        fun getAllStaticSources(): List<ListSource> {
+            return listOf(Manual, XrayAvailable, XrayWhitelist)
+        }
+    }
+}
