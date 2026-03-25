@@ -120,10 +120,10 @@ class MainActivity : AppCompatActivity() {
         updateSourceItems()
 
         binding.linksEditText.doAfterTextChanged {
-            if (currentSelectedSource() == ListSource.MANUAL) {
+            if (currentSelectedSource() == ListSource.Manual) {
                 val value = it?.toString().orEmpty()
                 AppPrefs.setServerList(this, value)
-                ConfigFileStore.saveCurrentSnapshot(this, ListSource.MANUAL, value)
+                ConfigFileStore.saveCurrentSnapshot(this, ListSource.Manual, value)
             }
         }
 
@@ -263,7 +263,7 @@ class MainActivity : AppCompatActivity() {
         if (AppPrefs.getServerList(this).isBlank()) {
             AppPrefs.setServerList(this, manualText)
         }
-        ConfigFileStore.saveCurrentSnapshot(this, ListSource.MANUAL, manualText)
+        ConfigFileStore.saveCurrentSnapshot(this, ListSource.Manual, manualText)
 
         binding.deleteDeadSwitch.isChecked = AppPrefs.isDeleteDeadOnFullScan(this)
         binding.hideCandidatesSwitch.isChecked = AppPrefs.isHideCandidates(this)
@@ -296,7 +296,7 @@ class MainActivity : AppCompatActivity() {
         renderCheckedResults(emptyList())
         updateFastestActionsState(AppPrefs.getLastFastestLink(this))
 
-        if (selectedSource != ListSource.MANUAL && AppPrefs.getRemoteCache(this, selectedSource).isBlank()) {
+        if (selectedSource != ListSource.Manual && AppPrefs.getRemoteCache(this, selectedSource).isBlank()) {
             refreshSelectedSource(showToast = false)
         }
 
@@ -323,7 +323,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showSourcePreview(source: ListSource) {
         when (source) {
-            ListSource.MANUAL -> {
+            ListSource.Manual -> {
                 val text = AppPrefs.getServerList(this).ifBlank { loadLinksFromAssets() }
                 updateLinksEditorText(text)
                 binding.statusText.text = getString(R.string.source_selected_status, source.displayName(this))
@@ -355,7 +355,7 @@ class MainActivity : AppCompatActivity() {
     private fun refreshSelectedSource(showToast: Boolean) {
         val source = currentSelectedSource()
         renderCheckedResults(emptyList())
-        if (source == ListSource.MANUAL) {
+        if (source == ListSource.Manual) {
             binding.statusText.text = getString(R.string.manual_source_no_refresh_needed)
             if (showToast) {
                 Toast.makeText(this, R.string.manual_source_no_refresh_needed, Toast.LENGTH_SHORT).show()
@@ -414,7 +414,7 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val sourceResult = loadActiveSourceText(forceRemoteRefresh = currentSelectedSource() != ListSource.MANUAL)
+                val sourceResult = loadActiveSourceText(forceRemoteRefresh = currentSelectedSource() != ListSource.Manual)
                 val links = sourceResult.links
                 if (links.isEmpty()) {
                     binding.statusText.text = getString(R.string.empty_list)
@@ -517,7 +517,7 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             try {
-                val sourceResult = loadActiveSourceText(forceRemoteRefresh = currentSelectedSource() != ListSource.MANUAL)
+                val sourceResult = loadActiveSourceText(forceRemoteRefresh = currentSelectedSource() != ListSource.Manual)
                 val links = sourceResult.links
                 if (links.isEmpty()) {
                     binding.statusText.text = getString(R.string.empty_list)
@@ -580,7 +580,7 @@ class MainActivity : AppCompatActivity() {
                     val newText = workingLinks.joinToString("\n")
                     updateLinksEditorText(newText)
                     ConfigFileStore.saveCurrentSnapshot(this@MainActivity, currentSelectedSource(), newText)
-                    if (currentSelectedSource() == ListSource.MANUAL) {
+                    if (currentSelectedSource() == ListSource.Manual) {
                         AppPrefs.setServerList(this@MainActivity, newText)
                     }
                 }
@@ -629,7 +629,7 @@ class MainActivity : AppCompatActivity() {
 
     private suspend fun loadActiveSourceText(forceRemoteRefresh: Boolean): SourceTextResult {
         val source = currentSelectedSource()
-        return if (source == ListSource.MANUAL) {
+        return if (source == ListSource.Manual) {
             val manualText = binding.linksEditText.text?.toString().orEmpty()
             AppPrefs.setServerList(this, manualText)
             ConfigFileStore.saveCurrentSnapshot(this, source, manualText)
@@ -837,11 +837,11 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        AppPrefs.setSelectedSource(this, ListSource.MANUAL)
-        binding.sourceSpinner.setSelection(sourceItems.indexOf(ListSource.MANUAL))
+        AppPrefs.setSelectedSource(this, ListSource.Manual)
+        binding.sourceSpinner.setSelection(sourceItems.indexOf(ListSource.Manual))
         updateLinksEditorText(text)
         AppPrefs.setServerList(this, text)
-        ConfigFileStore.saveCurrentSnapshot(this, ListSource.MANUAL, text)
+        ConfigFileStore.saveCurrentSnapshot(this, ListSource.Manual, text)
         renderCheckedResults(emptyList())
         binding.statusText.text = getString(R.string.import_success)
         binding.resultText.text = buildString {
@@ -853,7 +853,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun shareCurrentListFile() {
         val source = currentSelectedSource()
-        if (source == ListSource.MANUAL) {
+        if (source == ListSource.Manual) {
             val currentText = binding.linksEditText.text?.toString().orEmpty()
             AppPrefs.setServerList(this, currentText)
             ConfigFileStore.saveCurrentSnapshot(this, source, currentText)
@@ -992,7 +992,7 @@ class MainActivity : AppCompatActivity() {
         val interval = AppPrefs.getAutoCheckIntervalMinutes(this)
         updateIntervalHint(interval)
         if (binding.autoCheckSwitch.isChecked) {
-            if (currentSelectedSource() == ListSource.MANUAL) {
+            if (currentSelectedSource() == ListSource.Manual) {
                 AppPrefs.setServerList(this, binding.linksEditText.text?.toString().orEmpty())
             }
             AutoCheckScheduler.schedule(this, interval)
@@ -1102,7 +1102,7 @@ class MainActivity : AppCompatActivity() {
                 AppPrefs.setUserDefinedUrl(this, url)
                 AppPrefs.setUserDefinedName(this, name)
                 // Refresh current source if it's USER_DEFINED
-                if (currentSelectedSource() == ListSource.USER_DEFINED) {
+                if (currentSelectedSource() is ListSource.UserDefined) {
                     refreshSelectedSource(showToast = true)
                 }
                 dialog.dismiss()
@@ -1113,10 +1113,10 @@ class MainActivity : AppCompatActivity() {
             .setNeutralButton(R.string.clear) { dialog, _ ->
                 AppPrefs.setUserDefinedUrl(this, "")
                 AppPrefs.setUserDefinedName(this, "")
-                if (currentSelectedSource() == ListSource.USER_DEFINED) {
+                if (currentSelectedSource() is ListSource.UserDefined) {
                     // Switch to MANUAL source if URL cleared while USER_DEFINED selected
-                    AppPrefs.setSelectedSource(this, ListSource.MANUAL)
-                    binding.sourceSpinner.setSelection(sourceItems.indexOf(ListSource.MANUAL))
+                    AppPrefs.setSelectedSource(this, ListSource.Manual)
+                    binding.sourceSpinner.setSelection(sourceItems.indexOf(ListSource.Manual))
                 }
                 Toast.makeText(this, R.string.url_cleared, Toast.LENGTH_SHORT).show()
                 dialog.dismiss()
