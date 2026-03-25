@@ -29,12 +29,26 @@ object PersistentWorkingConfigsManager {
     }
     
     /**
-     * Get all persisted configs, sorted by latency (fastest first).
+     * Get persisted configs, optionally filtered by working status and max latency.
+     * @param onlyWorking if true, returns only configs with latencyMs != null
+     * @param maxLatency if not null, returns only configs with latencyMs <= maxLatency
      */
-    fun getConfigs(context: Context): List<PersistedConfig> {
+    fun getConfigs(
+        context: Context,
+        onlyWorking: Boolean = false,
+        maxLatency: Long? = null
+    ): List<PersistedConfig> {
         val json = prefs(context).getString(KEY_CONFIGS_LIST, "[]").orEmpty()
         val configs = PersistedConfig.listFromJson(json)
-        return cleanupOldConfigs(context, configs).sortedBy { it.latencyMs }
+        val cleaned = cleanupOldConfigs(context, configs)
+        var filtered = cleaned
+        if (onlyWorking) {
+            filtered = filtered.filter { it.latencyMs != null }
+        }
+        if (maxLatency != null) {
+            filtered = filtered.filter { it.latencyMs != null && it.latencyMs <= maxLatency }
+        }
+        return filtered.sortedBy { it.latencyMs }
     }
     
     /**
@@ -134,7 +148,12 @@ object PersistentWorkingConfigsManager {
      * Limit list to maxConfigs, keeping fastest ones.
      */
     private fun applyMaxLimit(configs: List<PersistedConfig>, maxConfigs: Int): List<PersistedConfig> {
-        return configs.sortedBy { it.latencyMs }.take(maxConfigs)
+        // Separate working (with latency) and non-working (no latency)
+        val (working, nonWorking) = configs.partition { it.latencyMs != null }
+        // Sort working by latency (fastest first)
+        val sortedWorking = working.sortedBy { it.latencyMs }
+        // Keep only fastest working up to limit, ignore non-working in limit
+        return sortedWorking.take(maxConfigs) + nonWorking
     }
     
     /**

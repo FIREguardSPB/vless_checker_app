@@ -228,7 +228,11 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.checkAllButton.setOnClickListener {
-            runFullCheck()
+            runFullCheck(smartSelection = true)
+        }
+        binding.checkAllButton.setOnLongClickListener {
+            runFullCheck(smartSelection = false)
+            true
         }
 
         binding.showSavedButton.setOnClickListener {
@@ -555,13 +559,11 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun runFullCheck() {
+    private fun runFullCheck(smartSelection: Boolean = true) {
         setBusy(true)
         renderCheckedResults(emptyList())
-        binding.statusText.text = getString(
-            R.string.preparing_source_for_check,
-            currentSelectedSource().displayName(this)
-        )
+        val modeText = if (smartSelection) "умный режим" else "полная проверка"
+        binding.statusText.text = "Подготовка ($modeText)..."
         binding.resultText.text = ""
 
         lifecycleScope.launch {
@@ -575,8 +577,13 @@ class MainActivity : AppCompatActivity() {
                     return@launch
                 }
 
-                // Умный выбор конфигов для проверки
-                val selectedLinks = selectConfigsToCheck(links)
+                val selectedLinks = if (smartSelection) {
+                    // Умный выбор конфигов для проверки
+                    selectConfigsToCheck(links)
+                } else {
+                    // Полная проверка всего списка
+                    links
+                }
                 if (selectedLinks.isEmpty()) {
                     binding.statusText.text = "Достаточно рабочих конфигов. Проверка не требуется."
                     Toast.makeText(this@MainActivity, "Достаточно рабочих конфигов", Toast.LENGTH_SHORT).show()
@@ -588,13 +595,13 @@ class MainActivity : AppCompatActivity() {
                     selectedLinks.size,
                     sourceResult.sourceLabel
                 )
+                Toast.makeText(this@MainActivity, "Запуск: $modeText (${selectedLinks.size} конфигов)", Toast.LENGTH_SHORT).show()
 
                 // Start foreground service for background checking
                 ForegroundCheckingService.start(this@MainActivity, selectedLinks, sourceResult.source)
                 
                 // Update UI to show background checking status
                 binding.statusText.text = "Проверка запущена в фоне. Подождите..."
-                Toast.makeText(this@MainActivity, "Проверка запущена в фоне", Toast.LENGTH_SHORT).show()
                 
             } catch (e: Exception) {
                 binding.statusText.text = getString(R.string.operation_failed)
@@ -607,7 +614,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshSavedConfigsDisplay() {
-        val saved = PersistentWorkingConfigsManager.getConfigs(this)
+        val maxLatency = AppPrefs.getMaxLatencyMs(this).takeIf { it > 0 }
+        val saved = PersistentWorkingConfigsManager.getConfigs(
+            this,
+            onlyWorking = true,
+            maxLatency = maxLatency
+        )
         val linkResults = saved.map { config ->
             LinkCheckResult(
                 link = config.link,
@@ -617,7 +629,7 @@ class MainActivity : AppCompatActivity() {
                 host = "",
                 port = 0,
                 checkType = "saved",
-                isWorking = config.latencyMs != null && config.latencyMs <= AppPrefs.getMaxLatencyMs(this),
+                isWorking = true, // already filtered
                 metadata = config.metadata,
                 country = config.country,
                 flag = config.flag
@@ -633,7 +645,12 @@ class MainActivity : AppCompatActivity() {
      * @return Список ссылок для проверки (обычно меньше, чем allLinks).
      */
     private fun selectConfigsToCheck(allLinks: List<String>): List<String> {
-        val saved = PersistentWorkingConfigsManager.getConfigs(this)
+        val maxLatency = AppPrefs.getMaxLatencyMs(this).takeIf { it > 0 }
+        val saved = PersistentWorkingConfigsManager.getConfigs(
+            this,
+            onlyWorking = true,
+            maxLatency = maxLatency
+        )
         val maxConfigs = PersistentWorkingConfigsManager.getMaxConfigs(this)
         val savedLinks = saved.map { it.link }.toSet()
         
