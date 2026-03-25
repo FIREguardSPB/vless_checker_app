@@ -62,7 +62,7 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:src="@android:drawable/ic_menu_manage"
                 android:contentDescription="Управление источниками"
-                android:visibility="gone"
+                android:visibility="visible"
                 app:tint="?attr/colorOnSurface" />
 
         </LinearLayout>

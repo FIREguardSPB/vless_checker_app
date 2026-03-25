@@ -1023,8 +1023,8 @@ class MainActivity : AppCompatActivity() {
         binding.sourceSpinner.adapter = sourceAdapter
         
         // Показать/скрыть кнопку управления источниками
-        val hasUserSources = sourceItems.any { it is ListSource.UserDefined }
-        binding.manageSourcesButton.visibility = if (hasUserSources) View.VISIBLE else View.GONE
+        // Всегда показываем кнопку, чтобы пользователь мог добавить первый источник
+        binding.manageSourcesButton.visibility = View.VISIBLE
     }
 
     private fun setBusy(isBusy: Boolean) {
