@@ -120,7 +120,7 @@ class ForegroundCheckingService : Service() {
                 results.add(result)
 
                 checkedCount = index + 1
-                if (result.success) {
+                if (result.isWorking) {
                     successfulCount++
                 }
 
