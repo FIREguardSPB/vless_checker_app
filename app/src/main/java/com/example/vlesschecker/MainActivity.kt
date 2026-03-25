@@ -82,6 +82,24 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+    private val pickFolderLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null) {
+                // Grant persistable URI permission
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+                AppPrefs.setSaveLocationCustomUri(this, uri.toString())
+                Toast.makeText(this, "Папка для сохранения выбрана", Toast.LENGTH_SHORT).show()
+            } else {
+                // User cancelled, revert to ask mode
+                AppPrefs.setSaveLocationMode(this, AppPrefs.SAVE_MODE_ASK)
+                binding.saveLocationSpinner.setSelection(0)
+                Toast.makeText(this, "Выбор папки отменён", Toast.LENGTH_SHORT).show()
+            }
+        }
+
     companion object {
         private const val ACTION_CHECKING_COMPLETED = "com.example.vlesschecker.action.CHECKING_COMPLETED"
         private const val ACTION_CHECKING_PROGRESS = "com.example.vlesschecker.action.CHECKING_PROGRESS"
@@ -120,6 +138,12 @@ class MainActivity : AppCompatActivity() {
             addAction(ACTION_CHECKING_PROGRESS)
         }
         registerReceiver(checkingReceiver, filter)
+        // Restore foreground checking progress if service is still running
+        val progress = AppPrefs.getForegroundCheckingProgress(this)
+        if (progress != null) {
+            val (checked, total) = progress
+            binding.statusText.text = "Проверка в фоне: $checked/$total"
+        }
     }
 
     override fun onPause() {
@@ -160,6 +184,24 @@ class MainActivity : AppCompatActivity() {
                 val values = resources.getStringArray(R.array.max_latency_values)
                 val selectedValue = values[position].toLongOrNull() ?: 1000L
                 AppPrefs.setMaxLatencyMs(this@MainActivity, selectedValue)
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+
+        val saveLocationLabels = resources.getStringArray(R.array.save_location_labels)
+        val saveLocationAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, saveLocationLabels)
+        saveLocationAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.saveLocationSpinner.adapter = saveLocationAdapter
+        
+        binding.saveLocationSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val values = resources.getStringArray(R.array.save_location_values)
+                val selectedValue = values[position].toIntOrNull() ?: AppPrefs.SAVE_MODE_ASK
+                AppPrefs.setSaveLocationMode(this@MainActivity, selectedValue)
+                // If custom mode, need to request folder selection
+                if (selectedValue == AppPrefs.SAVE_MODE_CUSTOM && AppPrefs.getSaveLocationCustomUri(this@MainActivity) == null) {
+                    requestCustomFolderSelection()
+                }
             }
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
@@ -338,6 +380,11 @@ class MainActivity : AppCompatActivity() {
         val savedMaxLatency = AppPrefs.getMaxLatencyMs(this)
         val selectedMaxLatencyIndex = maxLatencyValues.indexOf(savedMaxLatency).takeIf { it >= 0 } ?: 2 // default 1000 ms (index 2)
         binding.maxLatencySpinner.setSelection(selectedMaxLatencyIndex)
+
+        val saveLocationValues = resources.getStringArray(R.array.save_location_values).map { it.toInt() }
+        val savedSaveLocation = AppPrefs.getSaveLocationMode(this)
+        val selectedSaveLocationIndex = saveLocationValues.indexOf(savedSaveLocation).takeIf { it >= 0 } ?: 0 // default ask
+        binding.saveLocationSpinner.setSelection(selectedSaveLocationIndex)
 
         // Обновить список источников (включая пользовательские)
         updateSourceItems()
@@ -1076,6 +1123,7 @@ class MainActivity : AppCompatActivity() {
     private fun setBusy(isBusy: Boolean) {
         binding.checkFirstButton.isEnabled = !isBusy
         binding.checkAllButton.isEnabled = !isBusy
+        binding.showSavedButton.isEnabled = !isBusy
         binding.importButton.isEnabled = !isBusy
         binding.shareCurrentListFileButton.isEnabled = !isBusy
         binding.shareWorkingListFileButton.isEnabled = !isBusy
@@ -1084,6 +1132,7 @@ class MainActivity : AppCompatActivity() {
         binding.intervalSpinner.isEnabled = !isBusy
         binding.maxConfigsSpinner.isEnabled = !isBusy
         binding.maxLatencySpinner.isEnabled = !isBusy
+        binding.saveLocationSpinner.isEnabled = !isBusy
         binding.autoCheckSwitch.isEnabled = !isBusy
         binding.deleteDeadSwitch.isEnabled = !isBusy
         binding.hideCandidatesSwitch.isEnabled = !isBusy
@@ -1168,5 +1217,10 @@ class MainActivity : AppCompatActivity() {
                 dialog.dismiss()
             }
             .show()
+    }
+
+    private fun requestCustomFolderSelection() {
+        // Launch document tree picker
+        pickFolderLauncher.launch(null)
     }
 }

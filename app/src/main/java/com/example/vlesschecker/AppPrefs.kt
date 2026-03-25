@@ -17,6 +17,12 @@ object AppPrefs {
     private const val KEY_LAST_FASTEST_LINK = "last_fastest_link"
     private const val KEY_USER_DEFINED_URL = "user_defined_url"
     private const val KEY_USER_DEFINED_NAME = "user_defined_name"
+    private const val KEY_FOREGROUND_CHECKING_PROGRESS_CHECKED = "fg_checking_checked"
+    private const val KEY_FOREGROUND_CHECKING_PROGRESS_TOTAL = "fg_checking_total"
+    private const val KEY_FOREGROUND_CHECKING_LAST_UPDATE = "fg_checking_last_update"
+    private const val FOREGROUND_CHECKING_TIMEOUT_MS = 30_000L  // 30 секунд
+    private const val KEY_SAVE_LOCATION_MODE = "save_location_mode"
+    private const val KEY_SAVE_LOCATION_CUSTOM_URI = "save_location_custom_uri"
 
     fun getServerList(context: Context): String {
         return prefs(context).getString(KEY_MANUAL_SERVER_LIST, "").orEmpty()
@@ -200,6 +206,61 @@ object AppPrefs {
 
     fun setMaxLatencyMs(context: Context, value: Long) {
         prefs(context).edit().putLong("max_latency_ms", value).apply()
+    }
+
+    fun setForegroundCheckingProgress(context: Context, checked: Int, total: Int) {
+        prefs(context).edit()
+            .putInt(KEY_FOREGROUND_CHECKING_PROGRESS_CHECKED, checked)
+            .putInt(KEY_FOREGROUND_CHECKING_PROGRESS_TOTAL, total)
+            .putLong(KEY_FOREGROUND_CHECKING_LAST_UPDATE, System.currentTimeMillis())
+            .apply()
+    }
+
+    fun getForegroundCheckingProgress(context: Context): Pair<Int, Int>? {
+        val lastUpdate = prefs(context).getLong(KEY_FOREGROUND_CHECKING_LAST_UPDATE, 0)
+        if (System.currentTimeMillis() - lastUpdate > FOREGROUND_CHECKING_TIMEOUT_MS) {
+            // Progress is stale
+            return null
+        }
+        val checked = prefs(context).getInt(KEY_FOREGROUND_CHECKING_PROGRESS_CHECKED, 0)
+        val total = prefs(context).getInt(KEY_FOREGROUND_CHECKING_PROGRESS_TOTAL, 0)
+        return Pair(checked, total)
+    }
+
+    fun clearForegroundCheckingProgress(context: Context) {
+        prefs(context).edit()
+            .remove(KEY_FOREGROUND_CHECKING_PROGRESS_CHECKED)
+            .remove(KEY_FOREGROUND_CHECKING_PROGRESS_TOTAL)
+            .remove(KEY_FOREGROUND_CHECKING_LAST_UPDATE)
+            .apply()
+    }
+
+    // Save location modes
+    companion object {
+        const val SAVE_MODE_ASK = 0
+        const val SAVE_MODE_DOWNLOADS = 1
+        const val SAVE_MODE_DOCUMENTS = 2
+        const val SAVE_MODE_CUSTOM = 3
+    }
+
+    fun getSaveLocationMode(context: Context): Int {
+        return prefs(context).getInt(KEY_SAVE_LOCATION_MODE, SAVE_MODE_ASK)
+    }
+
+    fun setSaveLocationMode(context: Context, mode: Int) {
+        prefs(context).edit().putInt(KEY_SAVE_LOCATION_MODE, mode).apply()
+    }
+
+    fun getSaveLocationCustomUri(context: Context): String? {
+        return prefs(context).getString(KEY_SAVE_LOCATION_CUSTOM_URI, null)
+    }
+
+    fun setSaveLocationCustomUri(context: Context, uri: String?) {
+        if (uri == null) {
+            prefs(context).edit().remove(KEY_SAVE_LOCATION_CUSTOM_URI).apply()
+        } else {
+            prefs(context).edit().putString(KEY_SAVE_LOCATION_CUSTOM_URI, uri).apply()
+        }
     }
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

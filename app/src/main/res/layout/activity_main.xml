@@ -196,6 +196,19 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp" />
 
+        <com.google.android.material.textview.MaterialTextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/save_location_label"
+            android:textAppearance="@style/TextAppearance.Material3.BodyMedium" />
+
+        <Spinner
+            android:id="@+id/saveLocationSpinner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp" />
+
         <com.google.android.material.button.MaterialButton
             android:id="@+id/checkFirstButton"
             android:layout_width="match_parent"

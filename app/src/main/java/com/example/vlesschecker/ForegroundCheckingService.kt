@@ -154,6 +154,8 @@ class ForegroundCheckingService : Service() {
                         putExtra("total", totalConfigs)
                     }
                 )
+                // Clear saved progress
+                AppPrefs.clearForegroundCheckingProgress(this@ForegroundCheckingService)
             }
 
             // Stop service after delay
@@ -167,6 +169,7 @@ class ForegroundCheckingService : Service() {
     private fun stopChecking() {
         isChecking = false
         serviceScope.coroutineContext.cancel()
+        AppPrefs.clearForegroundCheckingProgress(this)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
@@ -190,6 +193,8 @@ class ForegroundCheckingService : Service() {
                 putExtra("total", totalConfigs)
             }
         )
+        // Save progress to shared prefs for UI restoration
+        AppPrefs.setForegroundCheckingProgress(this, checkedCount, totalConfigs)
     }
 
     private fun buildNotification(

@@ -166,4 +166,18 @@
         <item>2000</item>
         <item>0</item>
     </string-array>
+
+    <string name="save_location_label">Папка для сохранения</string>
+    <string-array name="save_location_labels">
+        <item>Запрашивать каждый раз</item>
+        <item>Автоматически в Downloads</item>
+        <item>Автоматически в Documents</item>
+        <item>Выбранная папка</item>
+    </string-array>
+    <string-array name="save_location_values">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+    </string-array>
 </resources>
