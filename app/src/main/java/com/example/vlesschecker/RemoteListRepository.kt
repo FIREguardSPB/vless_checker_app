@@ -115,9 +115,33 @@ object RemoteListRepository {
                 if (source.url.isBlank()) {
                     error("Пользовательский URL не настроен. Нажмите и удерживайте для добавления.")
                 }
-                Pair(source.url, source.url) // No fallback URL
+                // Convert GitHub page URL to raw URL automatically
+                val primaryUrl = source.url
+                val fallbackUrl = convertToRawGitHubUrl(primaryUrl)
+                Pair(primaryUrl, fallbackUrl)
             }
             is ListSource.Manual -> error("Manual source does not have remote URL")
+        }
+    }
+
+    /**
+     * Convert GitHub page URL (https://github.com/.../blob/...) to raw URL.
+     * If not a GitHub blob URL, returns the original URL.
+     */
+    private fun convertToRawGitHubUrl(url: String): String {
+        if (!url.contains("github.com")) return url
+        
+        return try {
+            val regex = """https?://github\.com/([^/]+)/([^/]+)/blob/(.+)""".toRegex()
+            val match = regex.find(url)
+            if (match != null) {
+                val (user, repo, path) = match.destructured
+                "https://raw.githubusercontent.com/$user/$repo/$path"
+            } else {
+                url
+            }
+        } catch (e: Exception) {
+            url
         }
     }
 

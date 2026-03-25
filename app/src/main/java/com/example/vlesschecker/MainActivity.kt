@@ -80,6 +80,12 @@ class MainActivity : AppCompatActivity() {
         handleIntent(intent)
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Обновить список источников, если пользователь добавил/изменил URL
+        updateSourceItems()
+    }
+
     private fun setupUi() {
         intervalMinutes = resources.getStringArray(R.array.auto_check_intervals_values)
             .map { it.toInt() }
@@ -288,8 +294,6 @@ class MainActivity : AppCompatActivity() {
         updateSourceItems()
 
         val selectedSource = AppPrefs.getSelectedSource(this)
-        val selectedSourceIndex = sourceItems.indexOf(selectedSource).takeIf { it >= 0 } ?: 0
-        binding.sourceSpinner.setSelection(selectedSourceIndex)
 
         binding.statusText.text = getString(R.string.ready_status)
         binding.resultText.text = ""
@@ -1025,6 +1029,11 @@ class MainActivity : AppCompatActivity() {
         // Показать/скрыть кнопку управления источниками
         // Всегда показываем кнопку, чтобы пользователь мог добавить первый источник
         binding.manageSourcesButton.visibility = View.VISIBLE
+
+        // Восстановить выбранный источник после обновления списка
+        val selectedSource = AppPrefs.getSelectedSource(this)
+        val selectedSourceIndex = sourceItems.indexOf(selectedSource).takeIf { it >= 0 } ?: 0
+        binding.sourceSpinner.setSelection(selectedSourceIndex)
     }
 
     private fun setBusy(isBusy: Boolean) {
