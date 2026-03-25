@@ -100,10 +100,10 @@ object ConfigFileStore {
     private fun fileName(source: ListSource, workingOnly: Boolean): String {
         val suffix = if (workingOnly) "working" else "current"
         return when (source) {
-            ListSource.MANUAL -> "manual_${suffix}.txt"
-            ListSource.XRAY_AVAILABLE_ST_TOP100 -> "xray_available_top100_${suffix}.txt"
-            ListSource.XRAY_WHITE_LIST_ST_TOP100 -> "xray_whitelist_top100_${suffix}.txt"
-            ListSource.USER_DEFINED -> "user_defined_${suffix}.txt"
+            is ListSource.Manual -> "manual_${suffix}.txt"
+            is ListSource.XrayAvailable -> "xray_available_top100_${suffix}.txt"
+            is ListSource.XrayWhitelist -> "xray_whitelist_top100_${suffix}.txt"
+            is ListSource.UserDefined -> "user_defined_${suffix}.txt"
         }
     }
 }

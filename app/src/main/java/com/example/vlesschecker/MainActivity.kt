@@ -33,12 +33,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var intervalMinutes: List<Int>
     private var latestWorkingResults: List<LinkCheckResult> = emptyList()
     private var visibleWorkingResults: List<LinkCheckResult> = emptyList()
-    private val sourceItems = listOf(
-        ListSource.MANUAL,
-        ListSource.XRAY_AVAILABLE_ST_TOP100,
-        ListSource.XRAY_WHITE_LIST_ST_TOP100,
-        ListSource.USER_DEFINED
-    )
+    private var sourceItems: List<ListSource> = emptyList()
+        get() = if (field.isEmpty()) ListSource.getStaticSources() else field
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -121,10 +117,7 @@ class MainActivity : AppCompatActivity() {
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
 
-        val sourceLabels = sourceItems.map { it.displayName(this) }
-        val sourceAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, sourceLabels)
-        sourceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        binding.sourceSpinner.adapter = sourceAdapter
+        updateSourceItems()
 
         binding.linksEditText.doAfterTextChanged {
             if (currentSelectedSource() == ListSource.MANUAL) {
@@ -138,10 +131,10 @@ class MainActivity : AppCompatActivity() {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 val source = sourceItems[position]
                 AppPrefs.setSelectedSource(this@MainActivity, source)
-                if (source == ListSource.USER_DEFINED) {
-                    val url = AppPrefs.getUserDefinedUrl(this@MainActivity)
-                    if (url.isBlank()) {
-                        showUserDefinedUrlDialog()
+                if (source is ListSource.UserDefined) {
+                    if (source.url.isBlank()) {
+                        // Это не должно происходить, но на всякий случай
+                        Toast.makeText(this@MainActivity, "URL источника пуст", Toast.LENGTH_SHORT).show()
                         return
                     }
                 }
@@ -156,14 +149,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.sourceSpinner.setOnLongClickListener {
-            val position = binding.sourceSpinner.selectedItemPosition.coerceIn(0, sourceItems.lastIndex)
-            val source = sourceItems[position]
-            if (source == ListSource.USER_DEFINED) {
-                showUserDefinedUrlDialog()
-                true
-            } else {
-                false
-            }
+            // Открываем управление источниками
+            val intent = Intent(this, UserSourcesActivity::class.java)
+            startActivity(intent)
+            true
+        }
+
+        binding.manageSourcesButton.setOnClickListener {
+            val intent = Intent(this, UserSourcesActivity::class.java)
+            startActivity(intent)
         }
 
         binding.refreshSourceButton.setOnClickListener {
@@ -289,6 +283,9 @@ class MainActivity : AppCompatActivity() {
         val savedMaxLatency = AppPrefs.getMaxLatencyMs(this)
         val selectedMaxLatencyIndex = maxLatencyValues.indexOf(savedMaxLatency).takeIf { it >= 0 } ?: 2 // default 1000 ms (index 2)
         binding.maxLatencySpinner.setSelection(selectedMaxLatencyIndex)
+
+        // Обновить список источников (включая пользовательские)
+        updateSourceItems()
 
         val selectedSource = AppPrefs.getSelectedSource(this)
         val selectedSourceIndex = sourceItems.indexOf(selectedSource).takeIf { it >= 0 } ?: 0
@@ -1016,6 +1013,18 @@ class MainActivity : AppCompatActivity() {
             interval,
             currentSelectedSource().displayName(this)
         )
+    }
+
+    private fun updateSourceItems() {
+        sourceItems = ListSource.getAllSources(this)
+        val sourceLabels = sourceItems.map { it.displayName(this) }
+        val sourceAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, sourceLabels)
+        sourceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.sourceSpinner.adapter = sourceAdapter
+        
+        // Показать/скрыть кнопку управления источниками
+        val hasUserSources = sourceItems.any { it is ListSource.UserDefined }
+        binding.manageSourcesButton.visibility = if (hasUserSources) View.VISIBLE else View.GONE
     }
 
     private fun setBusy(isBusy: Boolean) {

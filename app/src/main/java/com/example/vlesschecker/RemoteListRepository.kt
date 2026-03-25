@@ -28,7 +28,7 @@ object RemoteListRepository {
         preferFreshRemote: Boolean = true
     ): SourceTextResult {
         return when (source) {
-            ListSource.MANUAL -> {
+            is ListSource.Manual -> {
                 val text = AppPrefs.getServerList(context)
                 val configs = VlessChecker.parseLinesWithMetadata(text)
                 ConfigFileStore.saveCurrentSnapshot(context, source, text)
@@ -103,22 +103,21 @@ object RemoteListRepository {
 
     private fun urlsForSource(context: Context, source: ListSource): Pair<String, String> {
         return when (source) {
-            ListSource.XRAY_AVAILABLE_ST_TOP100 -> Pair(
+            is ListSource.XrayAvailable -> Pair(
                 "https://whiteprime.github.io/xraycheck/configs/available(top100)",
                 "https://raw.githubusercontent.com/WhitePrime/xraycheck/main/configs/available%28top100%29"
             )
-            ListSource.XRAY_WHITE_LIST_ST_TOP100 -> Pair(
+            is ListSource.XrayWhitelist -> Pair(
                 "https://whiteprime.github.io/xraycheck/configs/white-list_available(top100)",
                 "https://raw.githubusercontent.com/WhitePrime/xraycheck/main/configs/white-list_available%28top100%29"
             )
-            ListSource.USER_DEFINED -> {
-                val url = AppPrefs.getUserDefinedUrl(context)
-                if (url.isBlank()) {
-                    error("User defined URL is not set")
+            is ListSource.UserDefined -> {
+                if (source.url.isBlank()) {
+                    error("Пользовательский URL не настроен. Нажмите и удерживайте для добавления.")
                 }
-                Pair(url, url) // No fallback URL
+                Pair(source.url, source.url) // No fallback URL
             }
-            ListSource.MANUAL -> error("Manual source does not have remote URL")
+            is ListSource.Manual -> error("Manual source does not have remote URL")
         }
     }
 

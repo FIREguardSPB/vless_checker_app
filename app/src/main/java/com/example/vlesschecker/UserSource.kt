@@ -69,4 +69,12 @@ object UserSourceManager {
     fun getById(context: Context, id: String): UserSource? {
         return getAll(context).firstOrNull { it.id == id }
     }
+
+    fun getFirstEnabled(context: Context): UserSource? {
+        return getAll(context).firstOrNull { it.isEnabled }
+    }
+
+    fun getEnabledSources(context: Context): List<UserSource> {
+        return getAll(context).filter { it.isEnabled }
+    }
 }

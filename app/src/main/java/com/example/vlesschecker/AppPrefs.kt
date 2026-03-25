@@ -27,7 +27,7 @@ object AppPrefs {
     }
 
     fun getSelectedSource(context: Context): ListSource {
-        return ListSource.fromPrefValue(prefs(context).getString(KEY_SELECTED_SOURCE, ListSource.MANUAL.prefValue))
+        return ListSource.fromPrefValue(context, prefs(context).getString(KEY_SELECTED_SOURCE, ListSource.Manual.prefValue))
     }
 
     fun setSelectedSource(context: Context, value: ListSource) {
@@ -36,20 +36,20 @@ object AppPrefs {
 
     fun getRemoteCache(context: Context, source: ListSource): String {
         val key = when (source) {
-            ListSource.XRAY_AVAILABLE_ST_TOP100 -> KEY_REMOTE_AVAILABLE_CACHE
-            ListSource.XRAY_WHITE_LIST_ST_TOP100 -> KEY_REMOTE_WHITELIST_CACHE
-            ListSource.USER_DEFINED -> KEY_REMOTE_USER_DEFINED_CACHE
-            ListSource.MANUAL -> return ""
+            is ListSource.XrayAvailable -> KEY_REMOTE_AVAILABLE_CACHE
+            is ListSource.XrayWhitelist -> KEY_REMOTE_WHITELIST_CACHE
+            is ListSource.UserDefined -> KEY_REMOTE_USER_DEFINED_CACHE
+            is ListSource.Manual -> return ""
         }
         return prefs(context).getString(key, "").orEmpty()
     }
 
     fun setRemoteCache(context: Context, source: ListSource, value: String) {
         val key = when (source) {
-            ListSource.XRAY_AVAILABLE_ST_TOP100 -> KEY_REMOTE_AVAILABLE_CACHE
-            ListSource.XRAY_WHITE_LIST_ST_TOP100 -> KEY_REMOTE_WHITELIST_CACHE
-            ListSource.USER_DEFINED -> KEY_REMOTE_USER_DEFINED_CACHE
-            ListSource.MANUAL -> return
+            is ListSource.XrayAvailable -> KEY_REMOTE_AVAILABLE_CACHE
+            is ListSource.XrayWhitelist -> KEY_REMOTE_WHITELIST_CACHE
+            is ListSource.UserDefined -> KEY_REMOTE_USER_DEFINED_CACHE
+            is ListSource.Manual -> return
         }
         prefs(context).edit().putString(key, value).apply()
     }
@@ -103,19 +103,87 @@ object AppPrefs {
     }
 
     fun getUserDefinedUrl(context: Context): String {
-        return prefs(context).getString(KEY_USER_DEFINED_URL, "").orEmpty()
+        // Try to get from new UserSourceManager first
+        val enabledSource = UserSourceManager.getFirstEnabled(context)
+        if (enabledSource != null) {
+            // Migrate old data if exists
+            migrateOldUserSource(context)
+            return enabledSource.url
+        }
+        
+        // Fallback to old storage
+        val oldUrl = prefs(context).getString(KEY_USER_DEFINED_URL, "").orEmpty()
+        if (oldUrl.isNotBlank()) {
+            // Migrate old URL to new system
+            val oldName = prefs(context).getString(KEY_USER_DEFINED_NAME, "").orEmpty()
+            val source = UserSource(
+                name = if (oldName.isNotBlank()) oldName else "Импортированный источник",
+                url = oldUrl,
+                isEnabled = true
+            )
+            UserSourceManager.add(context, source)
+            // Clear old keys
+            prefs(context).edit()
+                .remove(KEY_USER_DEFINED_URL)
+                .remove(KEY_USER_DEFINED_NAME)
+                .apply()
+            return oldUrl
+        }
+        
+        return ""
     }
 
     fun setUserDefinedUrl(context: Context, value: String) {
+        var enabledSource = UserSourceManager.getFirstEnabled(context)
+        if (enabledSource != null) {
+            enabledSource = enabledSource.copy(url = value)
+            UserSourceManager.update(context, enabledSource)
+        } else {
+            // Create new source
+            val source = UserSource(
+                name = "Пользовательский URL",
+                url = value,
+                isEnabled = true
+            )
+            UserSourceManager.add(context, source)
+        }
+        // Keep old storage for compatibility
         prefs(context).edit().putString(KEY_USER_DEFINED_URL, value).apply()
     }
 
     fun getUserDefinedName(context: Context): String {
+        val enabledSource = UserSourceManager.getFirstEnabled(context)
+        if (enabledSource != null) {
+            migrateOldUserSource(context)
+            return enabledSource.name
+        }
         return prefs(context).getString(KEY_USER_DEFINED_NAME, "").orEmpty()
     }
 
     fun setUserDefinedName(context: Context, value: String) {
+        val enabledSource = UserSourceManager.getFirstEnabled(context)
+        if (enabledSource != null) {
+            val updated = enabledSource.copy(name = value)
+            UserSourceManager.update(context, updated)
+        }
         prefs(context).edit().putString(KEY_USER_DEFINED_NAME, value).apply()
+    }
+
+    private fun migrateOldUserSource(context: Context) {
+        val oldUrl = prefs(context).getString(KEY_USER_DEFINED_URL, "").orEmpty()
+        if (oldUrl.isNotBlank()) {
+            val oldName = prefs(context).getString(KEY_USER_DEFINED_NAME, "").orEmpty()
+            val source = UserSource(
+                name = if (oldName.isNotBlank()) oldName else "Импортированный источник",
+                url = oldUrl,
+                isEnabled = true
+            )
+            UserSourceManager.add(context, source)
+            prefs(context).edit()
+                .remove(KEY_USER_DEFINED_URL)
+                .remove(KEY_USER_DEFINED_NAME)
+                .apply()
+        }
     }
 
     fun getMaxWorkingConfigs(context: Context): Int {
