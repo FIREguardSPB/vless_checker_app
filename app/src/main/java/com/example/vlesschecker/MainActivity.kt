@@ -28,6 +28,8 @@ import android.content.IntentFilter
 import java.io.BufferedWriter
 import java.io.OutputStreamWriter
 import android.provider.DocumentsContract
+import androidx.documentfile.provider.DocumentFile
+import com.example.vlesschecker.ForegroundCheckingService
 
 class MainActivity : AppCompatActivity() {
 
@@ -670,16 +672,17 @@ class MainActivity : AppCompatActivity() {
         val linkResults = saved.map { config ->
             LinkCheckResult(
                 link = config.link,
-                success = config.latencyMs != null,
-                latencyMs = config.latencyMs,
-                errorMessage = null,
-                host = "",
-                port = 0,
+                host = null,
+                port = null,
                 checkType = "saved",
+                latencyMs = config.latencyMs,
                 isWorking = true, // already filtered
-                metadata = config.metadata,
+                statusText = "Сохранённый конфиг",
+                confidence = null,
+                fullXrayError = null,
                 country = config.country,
-                flag = config.flag
+                flag = config.flag,
+                metadata = config.metadata
             )
         }
         renderCheckedResults(linkResults)
@@ -992,7 +995,38 @@ class MainActivity : AppCompatActivity() {
         }
         val timestamp = System.currentTimeMillis()
         val fileName = "vless_configs_${timestamp}.txt"
-        saveAsLauncher.launch(fileName)
+        val content = links.joinToString("\n")
+        
+        val mode = AppPrefs.getSaveLocationMode(this)
+        if (mode == AppPrefs.SAVE_MODE_CUSTOM) {
+            // Save directly to custom folder
+            saveWithSettings(
+                content = content,
+                suggestedFileName = fileName,
+                onSuccess = { uri ->
+                    runOnUiThread {
+                        binding.resultText.text = buildString {
+                            appendLine(getString(R.string.save_as_success))
+                            appendLine("Файл: ${uri.lastPathSegment}")
+                            val existing = binding.resultText.text?.toString().orEmpty().trim()
+                            if (existing.isNotBlank()) {
+                                appendLine()
+                                append(existing)
+                            }
+                        }
+                        Toast.makeText(this, R.string.save_as_success, Toast.LENGTH_SHORT).show()
+                    }
+                },
+                onFailure = { message ->
+                    runOnUiThread {
+                        Toast.makeText(this, "Ошибка: $message", Toast.LENGTH_LONG).show()
+                    }
+                }
+            )
+        } else {
+            // For ASK, DOWNLOADS, DOCUMENTS use system picker
+            saveAsLauncher.launch(fileName)
+        }
     }
 
     private fun copyAllDisplayedToClipboard() {
@@ -1222,5 +1256,83 @@ class MainActivity : AppCompatActivity() {
     private fun requestCustomFolderSelection() {
         // Launch document tree picker
         pickFolderLauncher.launch(null)
+    }
+
+    private fun startForegroundCheck(links: List<String>, source: ListSource) {
+        val intent = Intent(this, ForegroundCheckingService::class.java).apply {
+            putStringArrayListExtra(ForegroundCheckingService.EXTRA_CONFIGS, ArrayList(links))
+            putExtra(ForegroundCheckingService.EXTRA_SOURCE, source.toString()) // TODO: serialize properly
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(intent)
+        } else {
+            startService(intent)
+        }
+        binding.statusText.text = "Запущена фоновая проверка ${links.size} конфигов"
+        Toast.makeText(this, "Проверка запущена в фоне", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun saveWithSettings(
+        content: String,
+        suggestedFileName: String,
+        onSuccess: (uri: Uri) -> Unit,
+        onFailure: (message: String) -> Unit
+    ) {
+        val mode = AppPrefs.getSaveLocationMode(this)
+        when (mode) {
+            AppPrefs.SAVE_MODE_ASK -> {
+                // Use system picker
+                saveAsLauncher.launch(suggestedFileName)
+                // Note: result will be handled by saveAsLauncher's callback
+                // We cannot directly call onSuccess/onFailure here
+                // For now, we'll assume the picker works
+                // TODO: refactor to handle callback properly
+                Toast.makeText(this, "Выберите место сохранения", Toast.LENGTH_SHORT).show()
+            }
+            AppPrefs.SAVE_MODE_DOWNLOADS, AppPrefs.SAVE_MODE_DOCUMENTS -> {
+                // For now, fallback to ASK mode
+                Toast.makeText(this, "Режим Downloads/Documents пока не реализован, используется выбор вручную", Toast.LENGTH_SHORT).show()
+                saveAsLauncher.launch(suggestedFileName)
+            }
+            AppPrefs.SAVE_MODE_CUSTOM -> {
+                val uriString = AppPrefs.getSaveLocationCustomUri(this)
+                if (uriString == null) {
+                    // Should not happen, but fallback
+                    Toast.makeText(this, "Папка не выбрана, используется выбор вручную", Toast.LENGTH_SHORT).show()
+                    saveAsLauncher.launch(suggestedFileName)
+                    return
+                }
+                val treeUri = Uri.parse(uriString)
+                try {
+                    val documentTree = androidx.documentfile.provider.DocumentFile.fromTreeUri(this, treeUri)
+                    if (documentTree == null || !documentTree.exists() || !documentTree.canWrite()) {
+                        Toast.makeText(this, "Нет доступа к папке, используется выбор вручную", Toast.LENGTH_SHORT).show()
+                        saveAsLauncher.launch(suggestedFileName)
+                        return
+                    }
+                    // Create or find file
+                    var targetFile = documentTree.findFile(suggestedFileName)
+                    if (targetFile == null) {
+                        targetFile = documentTree.createFile("text/plain", suggestedFileName)
+                    }
+                    if (targetFile == null) {
+                        onFailure("Не удалось создать файл в выбранной папке")
+                        return
+                    }
+                    // Write content
+                    contentResolver.openOutputStream(targetFile.uri)?.use { output ->
+                        output.write(content.toByteArray())
+                    }
+                    onSuccess(targetFile.uri)
+                    Toast.makeText(this, "Файл сохранён в выбранной папке", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
+                    onFailure("Ошибка сохранения: ${e.message}")
+                }
+            }
+            else -> {
+                // Default to ASK
+                saveAsLauncher.launch(suggestedFileName)
+            }
+        }
     }
 }

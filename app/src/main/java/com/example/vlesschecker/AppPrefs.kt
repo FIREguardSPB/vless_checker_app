@@ -236,12 +236,10 @@ object AppPrefs {
     }
 
     // Save location modes
-    companion object {
-        const val SAVE_MODE_ASK = 0
-        const val SAVE_MODE_DOWNLOADS = 1
-        const val SAVE_MODE_DOCUMENTS = 2
-        const val SAVE_MODE_CUSTOM = 3
-    }
+    const val SAVE_MODE_ASK = 0
+    const val SAVE_MODE_DOWNLOADS = 1
+    const val SAVE_MODE_DOCUMENTS = 2
+    const val SAVE_MODE_CUSTOM = 3
 
     fun getSaveLocationMode(context: Context): Int {
         return prefs(context).getInt(KEY_SAVE_LOCATION_MODE, SAVE_MODE_ASK)

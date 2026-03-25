@@ -180,6 +180,10 @@ object VlessChecker {
         )
     }
 
+    suspend fun checkSingle(context: Context, link: String): LinkCheckResult {
+        return checkSingleDetailed(link)
+    }
+
     fun normalizeLines(rawText: String): List<String> {
         return parseLinesWithMetadata(rawText).map { it.link }
     }
