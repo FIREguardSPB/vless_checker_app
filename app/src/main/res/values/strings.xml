@@ -115,6 +115,7 @@
     <string name="url_must_be_http_or_https">URL должен начинаться с http:// или https://</string>
     <string name="url_cleared">URL очищен</string>
     <string name="max_working_configs_label">Максимум рабочих конфигов</string>
+    <string name="max_latency_label">Максимальная задержка (мс)</string>
 
     <string-array name="auto_check_intervals_labels">
         <item>15 минут</item>
@@ -146,5 +147,23 @@
         <item>20</item>
         <item>30</item>
         <item>50</item>
+    </string-array>
+
+    <string-array name="max_latency_labels">
+        <item>500 мс</item>
+        <item>750 мс</item>
+        <item>1000 мс</item>
+        <item>1500 мс</item>
+        <item>2000 мс</item>
+        <item>Без ограничения</item>
+    </string-array>
+
+    <string-array name="max_latency_values">
+        <item>500</item>
+        <item>750</item>
+        <item>1000</item>
+        <item>1500</item>
+        <item>2000</item>
+        <item>0</item>
     </string-array>
 </resources>

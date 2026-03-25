@@ -107,6 +107,20 @@ class MainActivity : AppCompatActivity() {
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
         }
 
+        val maxLatencyLabels = resources.getStringArray(R.array.max_latency_labels)
+        val maxLatencyAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, maxLatencyLabels)
+        maxLatencyAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.maxLatencySpinner.adapter = maxLatencyAdapter
+        
+        binding.maxLatencySpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val values = resources.getStringArray(R.array.max_latency_values)
+                val selectedValue = values[position].toLongOrNull() ?: 1000L
+                AppPrefs.setMaxLatencyMs(this@MainActivity, selectedValue)
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+
         val sourceLabels = sourceItems.map { it.displayName(this) }
         val sourceAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, sourceLabels)
         sourceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
@@ -270,6 +284,11 @@ class MainActivity : AppCompatActivity() {
         val savedMaxConfigs = PersistentWorkingConfigsManager.getMaxConfigs(this)
         val selectedMaxConfigsIndex = maxConfigsValues.indexOf(savedMaxConfigs).takeIf { it >= 0 } ?: 1 // default 10
         binding.maxConfigsSpinner.setSelection(selectedMaxConfigsIndex)
+
+        val maxLatencyValues = resources.getStringArray(R.array.max_latency_values).map { it.toLong() }
+        val savedMaxLatency = AppPrefs.getMaxLatencyMs(this)
+        val selectedMaxLatencyIndex = maxLatencyValues.indexOf(savedMaxLatency).takeIf { it >= 0 } ?: 2 // default 1000 ms (index 2)
+        binding.maxLatencySpinner.setSelection(selectedMaxLatencyIndex)
 
         val selectedSource = AppPrefs.getSelectedSource(this)
         val selectedSourceIndex = sourceItems.indexOf(selectedSource).takeIf { it >= 0 } ?: 0
@@ -1009,6 +1028,7 @@ class MainActivity : AppCompatActivity() {
         binding.sourceSpinner.isEnabled = !isBusy
         binding.intervalSpinner.isEnabled = !isBusy
         binding.maxConfigsSpinner.isEnabled = !isBusy
+        binding.maxLatencySpinner.isEnabled = !isBusy
         binding.autoCheckSwitch.isEnabled = !isBusy
         binding.deleteDeadSwitch.isEnabled = !isBusy
         binding.hideCandidatesSwitch.isEnabled = !isBusy

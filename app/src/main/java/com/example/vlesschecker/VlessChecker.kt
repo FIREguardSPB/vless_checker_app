@@ -110,7 +110,11 @@ object VlessChecker {
     private var appContext: Context? = null
     var useXray: Boolean = false
     private const val TAG = "VlessChecker"
-    private const val MAX_ACCEPTABLE_LATENCY_MS = 1000L  // User requirement: discard proxies slower than 1000 ms
+    // User requirement: discard proxies slower than configured latency (default 1000 ms)
+    private fun getMaxAcceptableLatencyMs(): Long {
+        val context = appContext ?: return 1000L
+        return AppPrefs.getMaxLatencyMs(context)
+    }
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -158,7 +162,7 @@ object VlessChecker {
                     confidence = it.confidence!!
                 )
             }
-            .filter { it.latencyMs <= MAX_ACCEPTABLE_LATENCY_MS }
+            .filter { val limit = getMaxAcceptableLatencyMs(); limit == 0L || it.latencyMs <= limit }
             .sortedWith(compareBy<CheckResult> { it.confidence.rank }.thenBy { it.latencyMs })
 
         val confirmed = working.filter { it.confidence == CheckConfidence.CONFIRMED }

@@ -126,5 +126,13 @@ object AppPrefs {
         prefs(context).edit().putInt("max_working_configs", value).apply()
     }
 
+    fun getMaxLatencyMs(context: Context): Long {
+        return prefs(context).getLong("max_latency_ms", 1000L)  // default 1000 ms
+    }
+
+    fun setMaxLatencyMs(context: Context, value: Long) {
+        prefs(context).edit().putLong("max_latency_ms", value).apply()
+    }
+
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 }
