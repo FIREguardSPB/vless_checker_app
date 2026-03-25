@@ -56,7 +56,8 @@ class UserSourceDialogFragment : DialogFragment() {
     private fun validateInput() {
         val url = binding.urlEditText.text.toString().trim()
         val isValid = url.startsWith("http://") || url.startsWith("https://")
-        binding.urlInputLayout.error = if (!isValid && url.isNotBlank()) "URL должен начинаться с http:// или https://" else null
+        // TODO: Add TextInputLayout for error display
+        // binding.urlInputLayout.error = if (!isValid && url.isNotBlank()) "URL должен начинаться с http:// или https://" else null
         (dialog as? AlertDialog)?.getButton(AlertDialog.BUTTON_POSITIVE)?.isEnabled = isValid
     }
 

@@ -14,7 +14,7 @@ data class PersistedConfig(
     val country: String? = null,
     val flag: String? = null,
     val metadata: String? = null,
-    val source: ListSource = ListSource.MANUAL
+    val source: ListSource = ListSource.Manual
 ) {
     companion object {
         private val gson = Gson()
