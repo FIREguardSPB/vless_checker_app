@@ -3,7 +3,7 @@ package com.example.vlesschecker
 import android.content.Context
 
 object AppPrefs {
-    private const val PREFS_NAME = "vless_checker_prefs"
+    internal const val PREFS_NAME = "vless_checker_prefs"
     private const val KEY_MANUAL_SERVER_LIST = "manual_server_list"
     private const val KEY_SELECTED_SOURCE = "selected_source"
     private const val KEY_REMOTE_AVAILABLE_CACHE = "remote_available_cache"
