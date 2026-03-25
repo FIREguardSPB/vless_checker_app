@@ -212,6 +212,14 @@
             android:text="Проверить все и показать только рабочие" />
 
         <com.google.android.material.button.MaterialButton
+            android:id="@+id/showSavedButton"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="Показать сохранённые конфиги" />
+
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/saveDisplayedListFileButton"
             style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"

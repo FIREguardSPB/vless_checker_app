@@ -23,6 +23,8 @@ import kotlinx.coroutines.withContext
 import android.content.ClipboardManager
 import android.content.ClipData
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import java.io.BufferedWriter
 import java.io.OutputStreamWriter
 import android.provider.DocumentsContract
@@ -35,6 +37,29 @@ class MainActivity : AppCompatActivity() {
     private var visibleWorkingResults: List<LinkCheckResult> = emptyList()
     private var sourceItems: List<ListSource> = emptyList()
         get() = if (field.isEmpty()) ListSource.getStaticSources() else field
+
+    private val checkingReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                ACTION_CHECKING_COMPLETED -> {
+                    val successful = intent.getIntExtra("successful", 0)
+                    val total = intent.getIntExtra("total", 0)
+                    runOnUiThread {
+                        binding.statusText.text = "Проверка завершена: $successful/$total"
+                        // Refresh saved configs display
+                        refreshSavedConfigsDisplay()
+                    }
+                }
+                ACTION_CHECKING_PROGRESS -> {
+                    val checked = intent.getIntExtra("checked", 0)
+                    val total = intent.getIntExtra("total", 0)
+                    runOnUiThread {
+                        binding.statusText.text = "Проверено: $checked/$total"
+                    }
+                }
+            }
+        }
+    }
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -56,6 +81,11 @@ class MainActivity : AppCompatActivity() {
                 saveToUri(uri)
             }
         }
+
+    companion object {
+        private const val ACTION_CHECKING_COMPLETED = "com.example.vlesschecker.action.CHECKING_COMPLETED"
+        private const val ACTION_CHECKING_PROGRESS = "com.example.vlesschecker.action.CHECKING_PROGRESS"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -84,6 +114,17 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         // Обновить список источников, если пользователь добавил/изменил URL
         updateSourceItems()
+        // Register broadcast receiver for foreground checking updates
+        val filter = IntentFilter().apply {
+            addAction(ACTION_CHECKING_COMPLETED)
+            addAction(ACTION_CHECKING_PROGRESS)
+        }
+        registerReceiver(checkingReceiver, filter)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        unregisterReceiver(checkingReceiver)
     }
 
     private fun setupUi() {
@@ -188,6 +229,10 @@ class MainActivity : AppCompatActivity() {
 
         binding.checkAllButton.setOnClickListener {
             runFullCheck()
+        }
+
+        binding.showSavedButton.setOnClickListener {
+            refreshSavedConfigsDisplay()
         }
 
         binding.saveDisplayedListFileButton.setOnClickListener {
@@ -530,97 +575,27 @@ class MainActivity : AppCompatActivity() {
                     return@launch
                 }
 
+                // Умный выбор конфигов для проверки
+                val selectedLinks = selectConfigsToCheck(links)
+                if (selectedLinks.isEmpty()) {
+                    binding.statusText.text = "Достаточно рабочих конфигов. Проверка не требуется."
+                    Toast.makeText(this@MainActivity, "Достаточно рабочих конфигов", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
                 binding.statusText.text = getString(
                     R.string.full_check_started_with_source,
-                    links.size,
+                    selectedLinks.size,
                     sourceResult.sourceLabel
                 )
 
-                val batch = withContext(Dispatchers.IO) {
-                    VlessChecker.checkAll(links, { checked, total, current ->
-                        runOnUiThread {
-                            binding.statusText.text = getString(
-                                R.string.check_progress,
-                                checked,
-                                total,
-                                current.take(80)
-                            )
-                        }
-                    }, sourceResult.configs)
-                }
+                // Start foreground service for background checking
+                ForegroundCheckingService.start(this@MainActivity, selectedLinks, sourceResult.source)
                 
-                // Update persistent storage with new working configs
-                PersistentWorkingConfigsManager.updateWithNewResults(
-                    context = this@MainActivity,
-                    newResults = batch.checked,
-                    source = sourceResult.source
-                )
-
-                val workingDetailed = batch.checked.filter { it.isWorking }
-                renderCheckedResults(workingDetailed)
-
-                val confirmedLinks = batch.confirmed.map { it.link }
-                val workingLinks = batch.working.map { it.link }
-                persistVisibleResultsSnapshot()
-                val fastest = batch.working.firstOrNull()
-                if (fastest != null) {
-                    onFastestChosen(fastest)
-                    NotificationHelper.showFoundLinkNotification(
-                        context = this@MainActivity,
-                        link = fastest.link,
-                        title = getString(R.string.notification_title_all, batch.working.size),
-                        text = getString(
-                            R.string.notification_fastest_text,
-                            fastest.latencyMs,
-                            NotificationHelper.shorten(fastest.link, 56)
-                        )
-                    )
-                } else {
-                    AppPrefs.setLastFastestLink(this@MainActivity, "")
-                    updateFastestActionsState("")
-                }
-
-                if (binding.deleteDeadSwitch.isChecked) {
-                    val newText = workingLinks.joinToString("\n")
-                    updateLinksEditorText(newText)
-                    ConfigFileStore.saveCurrentSnapshot(this@MainActivity, currentSelectedSource(), newText)
-                    if (currentSelectedSource() == ListSource.Manual) {
-                        AppPrefs.setServerList(this@MainActivity, newText)
-                    }
-                }
-
-                binding.statusText.text = getString(
-                    R.string.full_check_done,
-                    batch.working.size,
-                    batch.failed.size,
-                    batch.skipped.size
-                )
-                binding.resultText.text = buildString {
-                    appendLine(getString(R.string.source_label, sourceResult.sourceLabel))
-                    if (fastest != null) {
-                        appendLine(getString(R.string.fastest_summary_title))
-                        appendLine(getString(R.string.latency_label, fastest.latencyMs))
-                        appendLine(getString(R.string.host_label, fastest.host, fastest.port))
-                    } else {
-                        appendLine(getString(R.string.no_link_passed_balanced))
-                    }
-                    appendLine(getString(R.string.working_count, batch.working.size))
-                    appendLine(getString(R.string.confirmed_count, batch.confirmed.size))
-                    appendLine(getString(R.string.candidate_count, batch.candidates.size))
-                    appendLine(getString(R.string.failed_count, batch.failed.size))
-                    appendLine(getString(R.string.skipped_count, batch.skipped.size))
-                }
-
-                if (workingLinks.isNotEmpty()) {
-                    val toastText = if (binding.deleteDeadSwitch.isChecked) {
-                        getString(R.string.full_check_done_and_cleaned)
-                    } else {
-                        getString(R.string.fastest_selected_to_clipboard)
-                    }
-                    Toast.makeText(this@MainActivity, toastText, Toast.LENGTH_SHORT).show()
-                } else {
-                    Toast.makeText(this@MainActivity, R.string.no_working_found, Toast.LENGTH_SHORT).show()
-                }
+                // Update UI to show background checking status
+                binding.statusText.text = "Проверка запущена в фоне. Подождите..."
+                Toast.makeText(this@MainActivity, "Проверка запущена в фоне", Toast.LENGTH_SHORT).show()
+                
             } catch (e: Exception) {
                 binding.statusText.text = getString(R.string.operation_failed)
                 binding.resultText.text = e.message ?: getString(R.string.operation_failed)
@@ -629,6 +604,51 @@ class MainActivity : AppCompatActivity() {
                 setBusy(false)
             }
         }
+    }
+
+    private fun refreshSavedConfigsDisplay() {
+        val saved = PersistentWorkingConfigsManager.getConfigs(this)
+        val linkResults = saved.map { config ->
+            LinkCheckResult(
+                link = config.link,
+                success = config.latencyMs != null,
+                latencyMs = config.latencyMs,
+                errorMessage = null,
+                host = "",
+                port = 0,
+                checkType = "saved",
+                isWorking = config.latencyMs != null && config.latencyMs <= AppPrefs.getMaxLatencyMs(this),
+                metadata = config.metadata,
+                country = config.country,
+                flag = config.flag
+            )
+        }
+        renderCheckedResults(linkResults)
+        binding.statusText.text = "Сохранённые конфиги: ${saved.size}"
+    }
+
+    /**
+     * Выбирает ссылки для проверки с учётом уже сохранённых рабочих конфигов.
+     * @param allLinks Все доступные ссылки из источника.
+     * @return Список ссылок для проверки (обычно меньше, чем allLinks).
+     */
+    private fun selectConfigsToCheck(allLinks: List<String>): List<String> {
+        val saved = PersistentWorkingConfigsManager.getConfigs(this)
+        val maxConfigs = PersistentWorkingConfigsManager.getMaxConfigs(this)
+        val savedLinks = saved.map { it.link }.toSet()
+        
+        // Уже есть достаточно конфигов?
+        if (saved.size >= maxConfigs) {
+            // Проверим 3 случайные ссылки для возможного улучшения (замены медленных)
+            val candidates = allLinks.filter { it !in savedLinks }.shuffled().take(3)
+            return if (candidates.isEmpty()) emptyList() else candidates
+        }
+        
+        val needed = maxConfigs - saved.size
+        // Выбрать случайные ссылки, которых ещё нет в сохранённых
+        val availableNew = allLinks.filter { it !in savedLinks }.shuffled()
+        val toCheck = availableNew.take(needed.coerceAtMost(availableNew.size))
+        return toCheck
     }
 
     private suspend fun loadActiveSourceText(forceRemoteRefresh: Boolean): SourceTextResult {
