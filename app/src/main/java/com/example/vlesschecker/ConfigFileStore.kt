@@ -103,6 +103,7 @@ object ConfigFileStore {
             ListSource.MANUAL -> "manual_${suffix}.txt"
             ListSource.XRAY_AVAILABLE_ST_TOP100 -> "xray_available_top100_${suffix}.txt"
             ListSource.XRAY_WHITE_LIST_ST_TOP100 -> "xray_whitelist_top100_${suffix}.txt"
+            ListSource.USER_DEFINED -> "user_defined_${suffix}.txt"
         }
     }
 }

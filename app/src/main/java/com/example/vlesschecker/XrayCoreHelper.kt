@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import libv2ray.Libv2ray
 import org.json.JSONArray
 import org.json.JSONObject
@@ -23,7 +24,7 @@ object XrayCoreHelper {
     private const val GEOIP_NAME = "geoip.dat"
     private const val GEOSITE_NAME = "geosite.dat"
     private const val XRAY_DIR_NAME = "xray"
-    private const val TEST_TIMEOUT_SECONDS = 30L
+    private const val TEST_TIMEOUT_SECONDS = 4L  // User requirement: timeout 3-4 seconds max
 
     private var isInitialized = false
     private var isLibraryAvailable = false
@@ -551,7 +552,9 @@ object XrayCoreHelper {
             
             // Measure outbound delay - this will start xray-core internally, test the config,
             // and return latency in milliseconds or throw exception if config is invalid
-            val latency = Libv2ray.measureOutboundDelay(configJson, testUrl)
+            val latency = withTimeout(4000L) {
+                Libv2ray.measureOutboundDelay(configJson, testUrl)
+            }
             
             Log.d(TAG, "AndroidLibXrayLite returned latency: ${latency}ms")
             

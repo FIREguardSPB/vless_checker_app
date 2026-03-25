@@ -1,6 +1,7 @@
 package com.example.vlesschecker
 
 import android.content.Context
+import android.util.Log
 import kotlinx.coroutines.*
 import org.json.JSONObject
 import java.io.InputStream
@@ -90,7 +91,10 @@ data class LinkCheckResult(
     val isWorking: Boolean,
     val statusText: String,
     val confidence: CheckConfidence? = null,
-    val fullXrayError: String? = null
+    val fullXrayError: String? = null,
+    val country: String? = null,
+    val flag: String? = null,
+    val metadata: String? = null
 )
 
 data class BatchCheckResult(
@@ -105,6 +109,8 @@ data class BatchCheckResult(
 object VlessChecker {
     private var appContext: Context? = null
     var useXray: Boolean = false
+    private const val TAG = "VlessChecker"
+    private const val MAX_ACCEPTABLE_LATENCY_MS = 500L  // User requirement: discard proxies slower than 500 ms
 
     fun init(context: Context) {
         appContext = context.applicationContext
@@ -119,14 +125,25 @@ object VlessChecker {
 
     suspend fun checkAll(
         links: List<String>,
-        progress: (checked: Int, total: Int, current: String) -> Unit = { _, _, _ -> }
+        progress: (checked: Int, total: Int, current: String) -> Unit = { _, _, _ -> },
+        configs: List<ConfigWithMetadata>? = null
     ): BatchCheckResult {
         val total = links.size
         val checked = mutableListOf<LinkCheckResult>()
 
         links.forEachIndexed { index, rawLink ->
             progress(index + 1, total, rawLink)
-            checked += checkSingleDetailed(rawLink)
+            val result = checkSingleDetailed(rawLink)
+            // Enrich with metadata if configs provided
+            val enriched = if (configs != null) {
+                val matchingConfig = configs.firstOrNull { it.link == result.link }
+                result.copy(
+                    country = matchingConfig?.country,
+                    flag = matchingConfig?.flag,
+                    metadata = matchingConfig?.metadata
+                )
+            } else result
+            checked += enriched
         }
 
         val working = checked
@@ -141,6 +158,7 @@ object VlessChecker {
                     confidence = it.confidence!!
                 )
             }
+            .filter { it.latencyMs <= MAX_ACCEPTABLE_LATENCY_MS }
             .sortedWith(compareBy<CheckResult> { it.confidence.rank }.thenBy { it.latencyMs })
 
         val confirmed = working.filter { it.confidence == CheckConfidence.CONFIRMED }
@@ -159,9 +177,20 @@ object VlessChecker {
     }
 
     fun normalizeLines(rawText: String): List<String> {
-        return rawText.lineSequence()
-            .mapNotNull { canonicalizeSupportedLink(it) }
-            .toList()
+        return parseLinesWithMetadata(rawText).map { it.link }
+    }
+
+    fun parseLinesWithMetadata(rawText: String): List<ConfigWithMetadata> {
+        val lines = rawText.lineSequence().toList()
+        Log.d(TAG, "parseLinesWithMetadata: input lines=${lines.size}, chars=${rawText.length}")
+        val result = lines.mapNotNull { ConfigWithMetadata.fromRawLine(it) }
+        Log.d(TAG, "parseLinesWithMetadata: output configs=${result.size}")
+        // Log first few configs for debugging
+        if (result.isNotEmpty()) {
+            val first = result.first()
+            Log.d(TAG, "parseLinesWithMetadata: first config: link=${first.link.take(80)}, metadata=${first.metadata}, country=${first.country}, flag=${first.flag}")
+        }
+        return result
     }
 
     fun normalizeLine(rawLine: String): String {
@@ -194,6 +223,7 @@ object VlessChecker {
 
     fun canonicalizeSupportedLink(rawText: String): String? {
         val extracted = extractSupportedLink(rawText) ?: return null
+        // Trim after # to keep only the link part for xray-core testing
         val clean = extracted.substringBefore('#').trim()
         val scheme = clean.substringBefore("://", missingDelimiterValue = "").lowercase()
         return when (scheme) {
@@ -806,4 +836,59 @@ object VlessChecker {
     )
 
     private val CRLF = byteArrayOf(0x0D, 0x0A)
+
+    /**
+     * Represents a parsed proxy configuration with optional metadata.
+     */
+    data class ConfigWithMetadata(
+        val link: String,
+        val rawLine: String,
+        val metadata: String? = null,
+        val country: String? = null,
+        val flag: String? = null
+    ) {
+        companion object {
+            fun fromRawLine(rawLine: String): ConfigWithMetadata? {
+                val normalized = normalizeLine(rawLine)
+                if (normalized.isBlank()) return null
+
+                // Extract the full link part (including # for metadata)
+                val extracted = extractSupportedLink(normalized) ?: return null
+                val hashIndex = extracted.indexOf('#')
+                val linkWithoutMetadata = if (hashIndex >= 0) extracted.substring(0, hashIndex).trim() else extracted
+                val metadata = if (hashIndex >= 0) extracted.substring(hashIndex + 1).trim().takeIf { it.isNotBlank() } else null
+                
+                // Parse metadata for known patterns
+                var country: String? = null
+                var flag: String? = null
+                if (metadata != null) {
+                    // Pattern: "Country: RU | Flag: 🇷🇺"
+                    val countryRegex = Regex("""[Cc]ountry\s*:\s*([^|]+)""")
+                    countryRegex.find(metadata)?.let { match ->
+                        country = match.groupValues[1].trim()
+                    }
+                    // Pattern: "Flag: 🇷🇺"
+                    val flagRegex = Regex("""[Ff]lag\s*:\s*([^|]+)""")
+                    flagRegex.find(metadata)?.let { match ->
+                        flag = match.groupValues[1].trim()
+                    }
+                    // If no structured metadata, treat whole metadata as country code if short (2-3 chars)
+                    if (country == null && metadata.length <= 3 && metadata.all { it.isLetter() }) {
+                        country = metadata.uppercase()
+                    }
+                }
+
+                // Get canonical link (without metadata) for testing
+                val canonicalLink = canonicalizeSupportedLink(normalized) ?: return null
+
+                return ConfigWithMetadata(
+                    link = canonicalLink,
+                    rawLine = rawLine,
+                    metadata = metadata,
+                    country = country,
+                    flag = flag
+                )
+            }
+        }
+    }
 }

@@ -11,15 +11,16 @@ data class SourceTextResult(
     val sourceLabel: String,
     val fetchedFresh: Boolean,
     val fromCache: Boolean,
-    val warningMessage: String? = null
+    val warningMessage: String? = null,
+    val configs: List<VlessChecker.ConfigWithMetadata> = emptyList()
 ) {
     val links: List<String>
-        get() = VlessChecker.normalizeLines(rawText)
+        get() = configs.map { it.link }.ifEmpty { VlessChecker.normalizeLines(rawText) }
 }
 
 object RemoteListRepository {
-    private const val CONNECT_TIMEOUT_MS = 8000
-    private const val READ_TIMEOUT_MS = 12000
+    private const val CONNECT_TIMEOUT_MS = 4000  // Reduced per user requirement
+    private const val READ_TIMEOUT_MS = 6000     // Reduced per user requirement
 
     fun loadForSource(
         context: Context,
@@ -29,13 +30,15 @@ object RemoteListRepository {
         return when (source) {
             ListSource.MANUAL -> {
                 val text = AppPrefs.getServerList(context)
+                val configs = VlessChecker.parseLinesWithMetadata(text)
                 ConfigFileStore.saveCurrentSnapshot(context, source, text)
                 SourceTextResult(
                     source = source,
                     rawText = text,
                     sourceLabel = source.displayName(context),
                     fetchedFresh = false,
-                    fromCache = false
+                    fromCache = false,
+                    configs = configs
                 )
             }
             else -> loadRemoteForSource(context, source, preferFreshRemote)
@@ -51,19 +54,22 @@ object RemoteListRepository {
         val cached = AppPrefs.getRemoteCache(context, source)
 
         if (!preferFreshRemote && cached.isNotBlank()) {
+            val cachedConfigs = VlessChecker.parseLinesWithMetadata(cached)
             return SourceTextResult(
                 source = source,
                 rawText = cached,
                 sourceLabel = sourceLabel,
                 fetchedFresh = false,
-                fromCache = true
+                fromCache = true,
+                configs = cachedConfigs
             )
         }
 
-        val (primaryUrl, fallbackUrl) = urlsForSource(source)
+        val (primaryUrl, fallbackUrl) = urlsForSource(context, source)
         return try {
             val freshText = fetchRemoteList(primaryUrl, fallbackUrl)
-            if (VlessChecker.normalizeLines(freshText).isEmpty()) {
+            val freshConfigs = VlessChecker.parseLinesWithMetadata(freshText)
+            if (freshConfigs.isEmpty()) {
                 throw IOException("Список пуст")
             }
             AppPrefs.setRemoteCache(context, source, freshText)
@@ -73,10 +79,12 @@ object RemoteListRepository {
                 rawText = freshText,
                 sourceLabel = sourceLabel,
                 fetchedFresh = true,
-                fromCache = false
+                fromCache = false,
+                configs = freshConfigs
             )
         } catch (e: Exception) {
             if (cached.isNotBlank()) {
+                val cachedConfigs = VlessChecker.parseLinesWithMetadata(cached)
                 ConfigFileStore.saveCurrentSnapshot(context, source, cached)
                 SourceTextResult(
                     source = source,
@@ -84,7 +92,8 @@ object RemoteListRepository {
                     sourceLabel = sourceLabel,
                     fetchedFresh = false,
                     fromCache = true,
-                    warningMessage = e.message ?: "Не удалось обновить список"
+                    warningMessage = e.message ?: "Не удалось обновить список",
+                    configs = cachedConfigs
                 )
             } else {
                 throw e
@@ -92,7 +101,7 @@ object RemoteListRepository {
         }
     }
 
-    private fun urlsForSource(source: ListSource): Pair<String, String> {
+    private fun urlsForSource(context: Context, source: ListSource): Pair<String, String> {
         return when (source) {
             ListSource.XRAY_AVAILABLE_ST_TOP100 -> Pair(
                 "https://whiteprime.github.io/xraycheck/configs/available(top100)",
@@ -102,6 +111,13 @@ object RemoteListRepository {
                 "https://whiteprime.github.io/xraycheck/configs/white-list_available(top100)",
                 "https://raw.githubusercontent.com/WhitePrime/xraycheck/main/configs/white-list_available%28top100%29"
             )
+            ListSource.USER_DEFINED -> {
+                val url = AppPrefs.getUserDefinedUrl(context)
+                if (url.isBlank()) {
+                    error("User defined URL is not set")
+                }
+                Pair(url, url) // No fallback URL
+            }
             ListSource.MANUAL -> error("Manual source does not have remote URL")
         }
     }

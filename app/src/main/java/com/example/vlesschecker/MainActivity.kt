@@ -36,7 +36,8 @@ class MainActivity : AppCompatActivity() {
     private val sourceItems = listOf(
         ListSource.MANUAL,
         ListSource.XRAY_AVAILABLE_ST_TOP100,
-        ListSource.XRAY_WHITE_LIST_ST_TOP100
+        ListSource.XRAY_WHITE_LIST_ST_TOP100,
+        ListSource.USER_DEFINED
     )
 
     private val notificationPermissionLauncher =
@@ -92,6 +93,20 @@ class MainActivity : AppCompatActivity() {
         intervalAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.intervalSpinner.adapter = intervalAdapter
 
+        val maxConfigsLabels = resources.getStringArray(R.array.max_working_configs_labels)
+        val maxConfigsAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, maxConfigsLabels)
+        maxConfigsAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.maxConfigsSpinner.adapter = maxConfigsAdapter
+        
+        binding.maxConfigsSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val values = resources.getStringArray(R.array.max_working_configs_values)
+                val selectedValue = values[position].toIntOrNull() ?: 10
+                PersistentWorkingConfigsManager.setMaxConfigs(this@MainActivity, selectedValue)
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+
         val sourceLabels = sourceItems.map { it.displayName(this) }
         val sourceAdapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, sourceLabels)
         sourceAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
@@ -109,6 +124,13 @@ class MainActivity : AppCompatActivity() {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 val source = sourceItems[position]
                 AppPrefs.setSelectedSource(this@MainActivity, source)
+                if (source == ListSource.USER_DEFINED) {
+                    val url = AppPrefs.getUserDefinedUrl(this@MainActivity)
+                    if (url.isBlank()) {
+                        showUserDefinedUrlDialog()
+                        return
+                    }
+                }
                 showSourcePreview(source)
                 renderCheckedResults(emptyList())
                 if (binding.autoCheckSwitch.isChecked) {
@@ -117,6 +139,17 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+        }
+
+        binding.sourceSpinner.setOnLongClickListener {
+            val position = binding.sourceSpinner.selectedItemPosition.coerceIn(0, sourceItems.lastIndex)
+            val source = sourceItems[position]
+            if (source == ListSource.USER_DEFINED) {
+                showUserDefinedUrlDialog()
+                true
+            } else {
+                false
+            }
         }
 
         binding.refreshSourceButton.setOnClickListener {
@@ -232,6 +265,11 @@ class MainActivity : AppCompatActivity() {
         val selectedIntervalIndex = intervalMinutes.indexOf(savedInterval).takeIf { it >= 0 } ?: 0
         binding.intervalSpinner.setSelection(selectedIntervalIndex)
         updateIntervalHint(savedInterval)
+
+        val maxConfigsValues = resources.getStringArray(R.array.max_working_configs_values).map { it.toInt() }
+        val savedMaxConfigs = PersistentWorkingConfigsManager.getMaxConfigs(this)
+        val selectedMaxConfigsIndex = maxConfigsValues.indexOf(savedMaxConfigs).takeIf { it >= 0 } ?: 1 // default 10
+        binding.maxConfigsSpinner.setSelection(selectedMaxConfigsIndex)
 
         val selectedSource = AppPrefs.getSelectedSource(this)
         val selectedSourceIndex = sourceItems.indexOf(selectedSource).takeIf { it >= 0 } ?: 0
@@ -376,7 +414,7 @@ class MainActivity : AppCompatActivity() {
                 )
 
                 val batch = withContext(Dispatchers.IO) {
-                    VlessChecker.checkAll(links) { checked, total, current ->
+                    VlessChecker.checkAll(links, { checked, total, current ->
                         runOnUiThread {
                             binding.statusText.text = getString(
                                 R.string.check_progress,
@@ -385,8 +423,15 @@ class MainActivity : AppCompatActivity() {
                                 current.take(80)
                             )
                         }
-                    }
+                    }, sourceResult.configs)
                 }
+                
+                // Update persistent storage with new working configs
+                PersistentWorkingConfigsManager.updateWithNewResults(
+                    context = this@MainActivity,
+                    newResults = batch.checked,
+                    source = sourceResult.source
+                )
 
                 renderCheckedResults(batch.checked.filter { it.isWorking })
 
@@ -472,7 +517,7 @@ class MainActivity : AppCompatActivity() {
                 )
 
                 val batch = withContext(Dispatchers.IO) {
-                    VlessChecker.checkAll(links) { checked, total, current ->
+                    VlessChecker.checkAll(links, { checked, total, current ->
                         runOnUiThread {
                             binding.statusText.text = getString(
                                 R.string.check_progress,
@@ -481,8 +526,15 @@ class MainActivity : AppCompatActivity() {
                                 current.take(80)
                             )
                         }
-                    }
+                    }, sourceResult.configs)
                 }
+                
+                // Update persistent storage with new working configs
+                PersistentWorkingConfigsManager.updateWithNewResults(
+                    context = this@MainActivity,
+                    newResults = batch.checked,
+                    source = sourceResult.source
+                )
 
                 val workingDetailed = batch.checked.filter { it.isWorking }
                 renderCheckedResults(workingDetailed)
@@ -956,6 +1008,7 @@ class MainActivity : AppCompatActivity() {
         binding.refreshSourceButton.isEnabled = !isBusy
         binding.sourceSpinner.isEnabled = !isBusy
         binding.intervalSpinner.isEnabled = !isBusy
+        binding.maxConfigsSpinner.isEnabled = !isBusy
         binding.autoCheckSwitch.isEnabled = !isBusy
         binding.deleteDeadSwitch.isEnabled = !isBusy
         binding.hideCandidatesSwitch.isEnabled = !isBusy
@@ -991,5 +1044,54 @@ class MainActivity : AppCompatActivity() {
         } catch (_: Exception) {
             ""
         }
+    }
+
+    private fun showUserDefinedUrlDialog() {
+        val currentUrl = AppPrefs.getUserDefinedUrl(this)
+        val currentName = AppPrefs.getUserDefinedName(this).takeIf { it.isNotBlank() } ?: ""
+
+        val view = layoutInflater.inflate(R.layout.dialog_user_source, null)
+        val urlEditText = view.findViewById<android.widget.EditText>(R.id.urlEditText)
+        val nameEditText = view.findViewById<android.widget.EditText>(R.id.nameEditText)
+        urlEditText.setText(currentUrl)
+        nameEditText.setText(currentName)
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(R.string.user_defined_url_dialog_title)
+            .setView(view)
+            .setPositiveButton(R.string.save) { dialog, _ ->
+                val url = urlEditText.text.toString().trim()
+                val name = nameEditText.text.toString().trim()
+                if (url.isBlank()) {
+                    Toast.makeText(this, R.string.url_cannot_be_empty, Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                    Toast.makeText(this, R.string.url_must_be_http_or_https, Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                AppPrefs.setUserDefinedUrl(this, url)
+                AppPrefs.setUserDefinedName(this, name)
+                // Refresh current source if it's USER_DEFINED
+                if (currentSelectedSource() == ListSource.USER_DEFINED) {
+                    refreshSelectedSource(showToast = true)
+                }
+                dialog.dismiss()
+            }
+            .setNegativeButton(R.string.cancel) { dialog, _ ->
+                dialog.dismiss()
+            }
+            .setNeutralButton(R.string.clear) { dialog, _ ->
+                AppPrefs.setUserDefinedUrl(this, "")
+                AppPrefs.setUserDefinedName(this, "")
+                if (currentSelectedSource() == ListSource.USER_DEFINED) {
+                    // Switch to MANUAL source if URL cleared while USER_DEFINED selected
+                    AppPrefs.setSelectedSource(this, ListSource.MANUAL)
+                    binding.sourceSpinner.setSelection(sourceItems.indexOf(ListSource.MANUAL))
+                }
+                Toast.makeText(this, R.string.url_cleared, Toast.LENGTH_SHORT).show()
+                dialog.dismiss()
+            }
+            .show()
     }
 }

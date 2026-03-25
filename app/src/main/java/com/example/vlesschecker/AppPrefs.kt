@@ -8,12 +8,15 @@ object AppPrefs {
     private const val KEY_SELECTED_SOURCE = "selected_source"
     private const val KEY_REMOTE_AVAILABLE_CACHE = "remote_available_cache"
     private const val KEY_REMOTE_WHITELIST_CACHE = "remote_whitelist_cache"
+    private const val KEY_REMOTE_USER_DEFINED_CACHE = "remote_user_defined_cache"
     private const val KEY_AUTO_CHECK_ENABLED = "auto_check_enabled"
     private const val KEY_AUTO_CHECK_INTERVAL_MIN = "auto_check_interval_min"
     private const val KEY_DELETE_DEAD_ON_FULL_SCAN = "delete_dead_on_full_scan"
     private const val KEY_HIDE_CANDIDATES = "hide_candidates"
     private const val KEY_LAST_AUTO_NOTIFIED_LINK = "last_auto_notified_link"
     private const val KEY_LAST_FASTEST_LINK = "last_fastest_link"
+    private const val KEY_USER_DEFINED_URL = "user_defined_url"
+    private const val KEY_USER_DEFINED_NAME = "user_defined_name"
 
     fun getServerList(context: Context): String {
         return prefs(context).getString(KEY_MANUAL_SERVER_LIST, "").orEmpty()
@@ -35,6 +38,7 @@ object AppPrefs {
         val key = when (source) {
             ListSource.XRAY_AVAILABLE_ST_TOP100 -> KEY_REMOTE_AVAILABLE_CACHE
             ListSource.XRAY_WHITE_LIST_ST_TOP100 -> KEY_REMOTE_WHITELIST_CACHE
+            ListSource.USER_DEFINED -> KEY_REMOTE_USER_DEFINED_CACHE
             ListSource.MANUAL -> return ""
         }
         return prefs(context).getString(key, "").orEmpty()
@@ -44,6 +48,7 @@ object AppPrefs {
         val key = when (source) {
             ListSource.XRAY_AVAILABLE_ST_TOP100 -> KEY_REMOTE_AVAILABLE_CACHE
             ListSource.XRAY_WHITE_LIST_ST_TOP100 -> KEY_REMOTE_WHITELIST_CACHE
+            ListSource.USER_DEFINED -> KEY_REMOTE_USER_DEFINED_CACHE
             ListSource.MANUAL -> return
         }
         prefs(context).edit().putString(key, value).apply()
@@ -95,6 +100,30 @@ object AppPrefs {
 
     fun setLastFastestLink(context: Context, value: String) {
         prefs(context).edit().putString(KEY_LAST_FASTEST_LINK, value).apply()
+    }
+
+    fun getUserDefinedUrl(context: Context): String {
+        return prefs(context).getString(KEY_USER_DEFINED_URL, "").orEmpty()
+    }
+
+    fun setUserDefinedUrl(context: Context, value: String) {
+        prefs(context).edit().putString(KEY_USER_DEFINED_URL, value).apply()
+    }
+
+    fun getUserDefinedName(context: Context): String {
+        return prefs(context).getString(KEY_USER_DEFINED_NAME, "").orEmpty()
+    }
+
+    fun setUserDefinedName(context: Context, value: String) {
+        prefs(context).edit().putString(KEY_USER_DEFINED_NAME, value).apply()
+    }
+
+    fun getMaxWorkingConfigs(context: Context): Int {
+        return prefs(context).getInt("max_working_configs", 10)
+    }
+
+    fun setMaxWorkingConfigs(context: Context, value: Int) {
+        prefs(context).edit().putInt("max_working_configs", value).apply()
     }
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
