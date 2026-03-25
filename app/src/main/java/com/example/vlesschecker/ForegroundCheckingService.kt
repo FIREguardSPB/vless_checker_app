@@ -28,8 +28,8 @@ class ForegroundCheckingService : Service() {
         private const val NOTIFICATION_ID = 101
         private const val ACTION_STOP = "com.example.vlesschecker.action.STOP"
 
-        internal const val EXTRA_CONFIGS = "configs"
-        internal const val EXTRA_SOURCE = "source"
+        const val EXTRA_CONFIGS = "configs"
+        const val EXTRA_SOURCE = "source"
 
         /**
          * Запустить сервис проверки.
