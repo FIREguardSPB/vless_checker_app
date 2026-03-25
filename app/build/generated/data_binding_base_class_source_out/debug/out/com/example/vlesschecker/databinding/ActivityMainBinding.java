@@ -47,7 +47,13 @@ public final class ActivityMainBinding implements ViewBinding {
   public final MaterialTextView checkedResultsTitle;
 
   @NonNull
+  public final MaterialButton copyAllButton;
+
+  @NonNull
   public final SwitchMaterial deleteDeadSwitch;
+
+  @NonNull
+  public final SwitchMaterial hideCandidatesSwitch;
 
   @NonNull
   public final MaterialButton importButton;
@@ -80,6 +86,12 @@ public final class ActivityMainBinding implements ViewBinding {
   public final MaterialTextView resultText;
 
   @NonNull
+  public final MaterialButton saveAsButton;
+
+  @NonNull
+  public final MaterialButton saveDisplayedListFileButton;
+
+  @NonNull
   public final MaterialButton shareCurrentListFileButton;
 
   @NonNull
@@ -107,12 +119,15 @@ public final class ActivityMainBinding implements ViewBinding {
       @NonNull SwitchMaterial autoCheckSwitch, @NonNull MaterialButton checkAllButton,
       @NonNull MaterialButton checkFirstButton, @NonNull LinearLayout checkedResultsContainer,
       @NonNull MaterialTextView checkedResultsHint, @NonNull MaterialTextView checkedResultsTitle,
-      @NonNull SwitchMaterial deleteDeadSwitch, @NonNull MaterialButton importButton,
+      @NonNull MaterialButton copyAllButton, @NonNull SwitchMaterial deleteDeadSwitch,
+      @NonNull SwitchMaterial hideCandidatesSwitch, @NonNull MaterialButton importButton,
       @NonNull MaterialButton importFastestVpnButton, @NonNull Spinner intervalSpinner,
       @NonNull TextInputEditText linksEditText, @NonNull MaterialTextView noteText,
       @NonNull MaterialButton openVpnSettingsButton, @NonNull ProgressBar progressBar,
       @NonNull MaterialButton refreshSourceButton, @NonNull MaterialButton restartVpnButton,
-      @NonNull MaterialTextView resultText, @NonNull MaterialButton shareCurrentListFileButton,
+      @NonNull MaterialTextView resultText, @NonNull MaterialButton saveAsButton,
+      @NonNull MaterialButton saveDisplayedListFileButton,
+      @NonNull MaterialButton shareCurrentListFileButton,
       @NonNull MaterialButton shareWorkingListFileButton, @NonNull Spinner sourceSpinner,
       @NonNull MaterialButton startVpnButton, @NonNull MaterialTextView statusText,
       @NonNull MaterialButton stopVpnButton, @NonNull MaterialTextView subtitleText,
@@ -125,7 +140,9 @@ public final class ActivityMainBinding implements ViewBinding {
     this.checkedResultsContainer = checkedResultsContainer;
     this.checkedResultsHint = checkedResultsHint;
     this.checkedResultsTitle = checkedResultsTitle;
+    this.copyAllButton = copyAllButton;
     this.deleteDeadSwitch = deleteDeadSwitch;
+    this.hideCandidatesSwitch = hideCandidatesSwitch;
     this.importButton = importButton;
     this.importFastestVpnButton = importFastestVpnButton;
     this.intervalSpinner = intervalSpinner;
@@ -136,6 +153,8 @@ public final class ActivityMainBinding implements ViewBinding {
     this.refreshSourceButton = refreshSourceButton;
     this.restartVpnButton = restartVpnButton;
     this.resultText = resultText;
+    this.saveAsButton = saveAsButton;
+    this.saveDisplayedListFileButton = saveDisplayedListFileButton;
     this.shareCurrentListFileButton = shareCurrentListFileButton;
     this.shareWorkingListFileButton = shareWorkingListFileButton;
     this.sourceSpinner = sourceSpinner;
@@ -215,9 +234,21 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.copyAllButton;
+      MaterialButton copyAllButton = ViewBindings.findChildViewById(rootView, id);
+      if (copyAllButton == null) {
+        break missingId;
+      }
+
       id = R.id.deleteDeadSwitch;
       SwitchMaterial deleteDeadSwitch = ViewBindings.findChildViewById(rootView, id);
       if (deleteDeadSwitch == null) {
+        break missingId;
+      }
+
+      id = R.id.hideCandidatesSwitch;
+      SwitchMaterial hideCandidatesSwitch = ViewBindings.findChildViewById(rootView, id);
+      if (hideCandidatesSwitch == null) {
         break missingId;
       }
 
@@ -281,6 +312,18 @@ public final class ActivityMainBinding implements ViewBinding {
         break missingId;
       }
 
+      id = R.id.saveAsButton;
+      MaterialButton saveAsButton = ViewBindings.findChildViewById(rootView, id);
+      if (saveAsButton == null) {
+        break missingId;
+      }
+
+      id = R.id.saveDisplayedListFileButton;
+      MaterialButton saveDisplayedListFileButton = ViewBindings.findChildViewById(rootView, id);
+      if (saveDisplayedListFileButton == null) {
+        break missingId;
+      }
+
       id = R.id.shareCurrentListFileButton;
       MaterialButton shareCurrentListFileButton = ViewBindings.findChildViewById(rootView, id);
       if (shareCurrentListFileButton == null) {
@@ -331,11 +374,11 @@ public final class ActivityMainBinding implements ViewBinding {
 
       return new ActivityMainBinding((ScrollView) rootView, autoCheckHint, autoCheckSwitch,
           checkAllButton, checkFirstButton, checkedResultsContainer, checkedResultsHint,
-          checkedResultsTitle, deleteDeadSwitch, importButton, importFastestVpnButton,
-          intervalSpinner, linksEditText, noteText, openVpnSettingsButton, progressBar,
-          refreshSourceButton, restartVpnButton, resultText, shareCurrentListFileButton,
-          shareWorkingListFileButton, sourceSpinner, startVpnButton, statusText, stopVpnButton,
-          subtitleText, titleText);
+          checkedResultsTitle, copyAllButton, deleteDeadSwitch, hideCandidatesSwitch, importButton,
+          importFastestVpnButton, intervalSpinner, linksEditText, noteText, openVpnSettingsButton,
+          progressBar, refreshSourceButton, restartVpnButton, resultText, saveAsButton,
+          saveDisplayedListFileButton, shareCurrentListFileButton, shareWorkingListFileButton,
+          sourceSpinner, startVpnButton, statusText, stopVpnButton, subtitleText, titleText);
     }
     String missingId = rootView.getResources().getResourceName(id);
     throw new NullPointerException("Missing required view with ID: ".concat(missingId));

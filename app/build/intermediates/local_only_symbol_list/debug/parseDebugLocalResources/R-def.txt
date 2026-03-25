@@ -2,6 +2,15 @@ R_DEF: Internal format may change without notice
 local
 array auto_check_intervals_labels
 array auto_check_intervals_values
+color checked_candidate_bg
+color checked_candidate_stroke
+color checked_candidate_text
+color checked_confirmed_bg
+color checked_confirmed_stroke
+color checked_confirmed_text
+color checked_default_bg
+color checked_default_stroke
+color checked_default_text
 id autoCheckHint
 id autoCheckSwitch
 id checkAllButton
@@ -10,8 +19,10 @@ id checkedResultsContainer
 id checkedResultsHint
 id checkedResultsTitle
 id configPreviewText
+id copyAllButton
 id deleteDeadSwitch
 id endpointText
+id hideCandidatesSwitch
 id importButton
 id importFastestVpnButton
 id indexText
@@ -23,6 +34,8 @@ id progressBar
 id refreshSourceButton
 id restartVpnButton
 id resultText
+id saveAsButton
+id saveDisplayedListFileButton
 id shareCurrentListFileButton
 id shareWorkingListFileButton
 id sourceSpinner
@@ -38,6 +51,7 @@ string app_name
 string auto_check_disabled_toast
 string auto_check_enabled_toast
 string auto_check_hint_with_source
+string candidate_count
 string check_progress
 string check_type_label
 string checked_item_copied_to_clipboard
@@ -47,10 +61,22 @@ string checked_results_hint
 string checked_results_title
 string checking_links_count
 string checking_links_count_with_source
+string confidence_badge_candidate
+string confidence_badge_confirmed
+string confidence_candidate_long
+string confidence_candidate_short
+string confidence_confirmed_long
+string confidence_confirmed_short
+string confidence_unknown_long
+string confirmed_count
 string copied_from_notification
+string copy_all_button
+string copy_all_empty
+string copy_all_success
 string empty_list
 string failed_count
 string fastest_copied_to_clipboard
+string fastest_selected_to_clipboard
 string fastest_sent_to_vpn_client
 string fastest_sent_via_share
 string fastest_summary_title
@@ -73,6 +99,7 @@ string manual_source_lines_count
 string manual_source_no_refresh_needed
 string no_fastest_to_import
 string no_link_passed
+string no_link_passed_balanced
 string no_working_found
 string notification_channel_description
 string notification_channel_name
@@ -92,6 +119,11 @@ string remote_source_loaded_toast
 string remote_source_not_loaded_yet
 string remote_source_placeholder
 string result_line_format
+string save_as_button
+string save_as_failed
+string save_as_success
+string save_displayed_file_missing
+string save_displayed_file_success
 string saved_file_label
 string share_current_file_missing
 string share_current_file_success

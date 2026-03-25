@@ -1294,6 +1294,15 @@ color cardview_dark_background
 color cardview_light_background
 color cardview_shadow_end_color
 color cardview_shadow_start_color
+color checked_candidate_bg
+color checked_candidate_stroke
+color checked_candidate_text
+color checked_confirmed_bg
+color checked_confirmed_stroke
+color checked_confirmed_text
+color checked_default_bg
+color checked_default_stroke
+color checked_default_text
 color design_bottom_navigation_shadow_color
 color design_box_stroke_color
 color design_dark_default_color_background
@@ -3132,6 +3141,7 @@ id content
 id contentPanel
 id contiguous
 id coordinator
+id copyAllButton
 id cos
 id counterclockwise
 id cradle
@@ -3205,6 +3215,7 @@ id graph_wrap
 id group_divider
 id groups
 id header_title
+id hideCandidatesSwitch
 id hide_ime_id
 id hideable
 id home
@@ -3364,6 +3375,8 @@ id right_icon
 id right_side
 id rounded
 id row_index_key
+id saveAsButton
+id saveDisplayedListFileButton
 id save_non_transition_alpha
 id save_overlay_view
 id sawtooth
@@ -3736,6 +3749,7 @@ string call_notification_hang_up_action
 string call_notification_incoming_text
 string call_notification_ongoing_text
 string call_notification_screening_text
+string candidate_count
 string character_counter_content_description
 string character_counter_overflowed_content_description
 string character_counter_pattern
@@ -3749,7 +3763,18 @@ string checked_results_title
 string checking_links_count
 string checking_links_count_with_source
 string clear_text_end_icon_content_description
+string confidence_badge_candidate
+string confidence_badge_confirmed
+string confidence_candidate_long
+string confidence_candidate_short
+string confidence_confirmed_long
+string confidence_confirmed_short
+string confidence_unknown_long
+string confirmed_count
 string copied_from_notification
+string copy_all_button
+string copy_all_empty
+string copy_all_success
 string empty_list
 string error_a11y_label
 string error_icon_content_description
@@ -3758,6 +3783,7 @@ string fab_transformation_scrim_behavior
 string fab_transformation_sheet_behavior
 string failed_count
 string fastest_copied_to_clipboard
+string fastest_selected_to_clipboard
 string fastest_sent_to_vpn_client
 string fastest_sent_via_share
 string fastest_summary_title
@@ -3883,6 +3909,7 @@ string mtrl_timepicker_cancel
 string mtrl_timepicker_confirm
 string no_fastest_to_import
 string no_link_passed
+string no_link_passed_balanced
 string no_working_found
 string notification_channel_description
 string notification_channel_name
@@ -3907,6 +3934,11 @@ string remote_source_loaded_toast
 string remote_source_not_loaded_yet
 string remote_source_placeholder
 string result_line_format
+string save_as_button
+string save_as_failed
+string save_as_success
+string save_displayed_file_missing
+string save_displayed_file_success
 string saved_file_label
 string search_menu_title
 string searchbar_scrolling_view_behavior

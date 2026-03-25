@@ -115,20 +115,25 @@ object XrayCoreHelper {
 
         // Copy binary if not exists
         if (!binaryFile.exists()) {
-            copyAssetToFile(context, "$XRAY_ASSETS_DIR/$XRAY_BINARY_NAME", binaryFile)
-            // Try to make executable
             try {
-                binaryFile.setExecutable(true, false)
-                Log.d(TAG, "xray binary copied and made executable: ${binaryFile.absolutePath}")
-            } catch (e: SecurityException) {
-                Log.e(TAG, "Failed to set executable permissions: ${e.message}")
-                // Try alternative: chmod via Runtime
+                copyAssetToFile(context, "$XRAY_ASSETS_DIR/$XRAY_BINARY_NAME", binaryFile)
+                // Try to make executable
                 try {
-                    Runtime.getRuntime().exec(arrayOf("chmod", "755", binaryFile.absolutePath)).waitFor()
-                    Log.d(TAG, "chmod 755 applied via Runtime")
-                } catch (e2: Exception) {
-                    Log.e(TAG, "Failed to chmod via Runtime: ${e2.message}")
+                    binaryFile.setExecutable(true, false)
+                    Log.d(TAG, "xray binary copied and made executable: ${binaryFile.absolutePath}")
+                } catch (e: SecurityException) {
+                    Log.e(TAG, "Failed to set executable permissions: ${e.message}")
+                    // Try alternative: chmod via Runtime
+                    try {
+                        Runtime.getRuntime().exec(arrayOf("chmod", "755", binaryFile.absolutePath)).waitFor()
+                        Log.d(TAG, "chmod 755 applied via Runtime")
+                    } catch (e2: Exception) {
+                        Log.e(TAG, "Failed to chmod via Runtime: ${e2.message}")
+                    }
                 }
+            } catch (e: Exception) {
+                Log.w(TAG, "xray binary asset not found or cannot be copied: ${e.message}. Library mode will be used.")
+                // Continue without binary, library mode will be used
             }
         }
 
